@@ -34,7 +34,7 @@ export const githubProvider: ForgeProvider = {
 
   async getPRStatus(
     ctx: ForgeContext,
-    args: { branch: string | null },
+    _args: { branch: string | null },
   ): Promise<PullRequestStatusResult> {
     try {
       const { stdout } = await runCommand(
@@ -96,7 +96,7 @@ export const githubProvider: ForgeProvider = {
 
   async mergePR(
     ctx: ForgeContext,
-    args: { prNumber: number },
+    _args: { prNumber: number },
   ): Promise<void> {
     await runCommand('gh', ['pr', 'merge', '--merge'], {
       cwd: ctx.worktreePath,

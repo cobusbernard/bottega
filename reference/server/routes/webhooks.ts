@@ -14,12 +14,12 @@ import {
   triggerPrAgentFromComment,
   triggerPrAgentFromReview,
 } from '../services/webhookService.js';
-import { runCommand } from '../services/shell.js';
 import {
   assertValidPositiveInt,
   assertValidRepoFullName,
   ValidationError,
 } from '../services/validators.js';
+import { githubProvider } from '../services/forge/githubProvider.js';
 
 const router = express.Router();
 
@@ -47,24 +47,8 @@ async function fetchPrBranchName(
     }
     throw error;
   }
-  try {
-    const { stdout } = await runCommand('gh', [
-      'pr',
-      'view',
-      String(prNumber),
-      '--repo',
-      repoFullName,
-      '--json',
-      'headRefName',
-      '--jq',
-      '.headRefName',
-    ]);
-    return stdout.trim() || null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[Webhook] Failed to fetch PR branch:', message);
-    return null;
-  }
+  const ctx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath: '' };
+  return githubProvider.getPRBranch(ctx, { prNumber, repoFullName });
 }
 
 async function fetchReviewComments(
@@ -83,19 +67,8 @@ async function fetchReviewComments(
     }
     throw error;
   }
-  try {
-    // After validation, all three pieces are known-safe — but execFile keeps
-    // shell metacharacters inert regardless, so this is defense in depth.
-    const { stdout } = await runCommand('gh', [
-      'api',
-      `repos/${repoFullName}/pulls/${prNumber}/reviews/${reviewId}/comments`,
-    ]);
-    return JSON.parse(stdout) as GitHubReviewComment[];
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[Webhook] Failed to fetch review comments:', message);
-    return [];
-  }
+  const ctx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath: '' };
+  return githubProvider.getReviewComments(ctx, { prNumber, reviewId, repoFullName });
 }
 
 router.post(

@@ -2,6 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import { runCommand } from './shell.js';
 import { assertValidBranchName } from './validators.js';
+import { githubProvider } from './forge/githubProvider.js';
 
 /**
  * Derive the worktree path for a task based on convention
@@ -360,17 +361,11 @@ export async function createPullRequest(
     }
     assertValidBranchName(branch);
 
-    await runCommand('git', ['push', '-u', 'origin', branch], { cwd: worktreePath });
-
+    const ctx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath };
     // Title and body pass straight through as argv. No escaping needed —
     // shell metacharacters inside title/body are literal bytes here.
-    const { stdout } = await runCommand(
-      'gh',
-      ['pr', 'create', '--title', title, '--body', body],
-      { cwd: worktreePath },
-    );
-
-    return { success: true, url: stdout.trim() };
+    const { url } = await githubProvider.createPR(ctx, { branch, title, body });
+    return { success: true, url };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
@@ -408,56 +403,8 @@ export async function getPullRequestStatus(
 ): Promise<PullRequestStatusResult> {
   const worktreePath = getWorktreePath(repoPath, taskId);
 
-  try {
-    const { stdout } = await runCommand(
-      'gh',
-      ['pr', 'view', '--json', 'url,state,mergeable'],
-      { cwd: worktreePath },
-    );
-    const prData = JSON.parse(stdout) as { url: string; state: string; mergeable: string };
-
-    let ciStatus: CIStatus = { status: 'none', checks: [] };
-    try {
-      const { stdout: checksOutput } = await runCommand(
-        'gh',
-        ['pr', 'checks', '--json', 'bucket,name,state,link'],
-        { cwd: worktreePath },
-      );
-      const checks = JSON.parse(checksOutput) as CICheck[];
-
-      if (checks.length > 0) {
-        const hasFailed = checks.some((c) => c.bucket === 'fail');
-        const hasPending = checks.some((c) => c.bucket === 'pending');
-        const allPassed = checks.every((c) => c.bucket === 'pass' || c.bucket === 'skipping');
-
-        if (hasFailed) {
-          ciStatus = { status: 'failed', checks };
-        } else if (hasPending) {
-          ciStatus = { status: 'pending', checks };
-        } else if (allPassed) {
-          ciStatus = { status: 'passed', checks };
-        } else {
-          ciStatus = { status: 'unknown', checks };
-        }
-      }
-    } catch (checksError) {
-      const code = (checksError as { code?: number }).code;
-      if (code === 8) {
-        ciStatus = { status: 'pending', checks: [] };
-      }
-    }
-
-    return {
-      success: true,
-      exists: true,
-      url: prData.url,
-      state: prData.state,
-      mergeable: prData.mergeable,
-      ciStatus,
-    };
-  } catch {
-    return { success: true, exists: false };
-  }
+  const ctx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath };
+  return githubProvider.getPRStatus(ctx, { branch: null });
 }
 
 /**
@@ -477,7 +424,8 @@ export async function mergeAndCleanup(
     let lastMergeError: Error | null = null;
     for (let mergeAttempt = 0; mergeAttempt < 3 && !merged; mergeAttempt++) {
       try {
-        await runCommand('gh', ['pr', 'merge', '--merge'], { cwd: worktreePath });
+        const mergeCtx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath };
+        await githubProvider.mergePR(mergeCtx, { prNumber: 0 });
         merged = true;
       } catch (mergeError) {
         lastMergeError = mergeError instanceof Error ? mergeError : new Error(String(mergeError));
