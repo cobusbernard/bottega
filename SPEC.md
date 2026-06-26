@@ -83,6 +83,7 @@ Opinionated features. Each is independent; implement what you want.
 | [`extra/refinement-agent.md`](./extra/refinement-agent.md) | An extra agent that polishes the work between review and PR. |
 | [`extra/yolo-mode.md`](./extra/yolo-mode.md) | A single-agent alternative to the multi-step pipeline. |
 | [`extra/pr-comment-retrigger.md`](./extra/pr-comment-retrigger.md) | Re-run the PR agent automatically when a PR receives review comments (GitHub webhook). |
+| [`extra/forge-providers.md`](./extra/forge-providers.md) | Drive pull requests, CI status, and the re-trigger webhook against a self-hosted Forgejo (or Gitea-compatible) instance, not just GitHub — one `ForgeProvider` seam, two implementations. |
 | [`extra/prompt-and-model-customization.md`](./extra/prompt-and-model-customization.md) | Per-agent prompt overrides and per-user model/effort selection. |
 | [`extra/auth-and-multi-user.md`](./extra/auth-and-multi-user.md) | Accounts, API keys, project membership, admin, and role-driven behavior (e.g. auto-advancing past the plan gate for non-technical users). |
 | [`extra/chat-ux.md`](./extra/chat-ux.md) | Manual-chat conveniences: slash commands, file attachments, voice input, title generation, the context-usage meter. |

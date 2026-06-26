@@ -2,6 +2,7 @@ import express, { type Request, type Response } from 'express';
 import bcrypt from 'bcrypt';
 import { userDb, projectsDb, projectMembersDb } from '../database/db.js';
 import type { ApiError } from '../../shared/api/_common.js';
+import forgeConnectionsRoutes from './forgeConnections.js';
 import type {
   AddProjectMemberResponse,
   AdminProjectListItem,
@@ -268,5 +269,7 @@ router.delete(
     }
   },
 );
+
+router.use('/forge-connections', forgeConnectionsRoutes);
 
 export default router;

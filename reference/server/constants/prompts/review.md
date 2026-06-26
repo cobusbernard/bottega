@@ -170,7 +170,7 @@ Update the task documentation file at `{{taskDocPath}}`:
 #### If READY:
 1. **Run the completion command** to signal the workflow is complete:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/complete-workflow.ts {{taskId}}
+tsx {{scriptsDir}}/complete-workflow.ts {{taskId}}
 ```
 This stops the automated agent loop and awaits final user review.
 
@@ -178,7 +178,7 @@ This stops the automated agent loop and awaits final user review.
 1. **Update the "Review Findings" section** explaining what is blocking progress and what user action is needed
 2. **Run the block command** to pause the workflow:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/block-workflow.ts {{taskId}}
+tsx {{scriptsDir}}/block-workflow.ts {{taskId}}
 ```
 This stops the automated agent loop until the user resumes it after providing the needed input.
 

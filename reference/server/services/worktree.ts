@@ -2,6 +2,8 @@ import path from 'path';
 import fs from 'fs';
 import { runCommand } from './shell.js';
 import { assertValidBranchName } from './validators.js';
+import { resolveForgeProvider } from './forge/index.js';
+import { parsePrNumberFromUrl } from './forge/prNumber.js';
 
 /**
  * Derive the worktree path for a task based on convention
@@ -350,6 +352,7 @@ export async function createPullRequest(
   taskId: number,
   title: string,
   body: string,
+  userId: number,
 ): Promise<CreatePRResult> {
   const worktreePath = getWorktreePath(repoPath, taskId);
 
@@ -360,17 +363,11 @@ export async function createPullRequest(
     }
     assertValidBranchName(branch);
 
-    await runCommand('git', ['push', '-u', 'origin', branch], { cwd: worktreePath });
-
+    const { provider, ctx } = await resolveForgeProvider(taskId, userId);
     // Title and body pass straight through as argv. No escaping needed —
     // shell metacharacters inside title/body are literal bytes here.
-    const { stdout } = await runCommand(
-      'gh',
-      ['pr', 'create', '--title', title, '--body', body],
-      { cwd: worktreePath },
-    );
-
-    return { success: true, url: stdout.trim() };
+    const { url } = await provider.createPR(ctx, { branch, title, body });
+    return { success: true, url };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { success: false, error: message };
@@ -403,61 +400,15 @@ export interface PullRequestStatusResult {
  * Get the status of a pull request for a task's worktree branch
  */
 export async function getPullRequestStatus(
-  repoPath: string,
+  _repoPath: string,
   taskId: number,
+  userId: number,
 ): Promise<PullRequestStatusResult> {
-  const worktreePath = getWorktreePath(repoPath, taskId);
-
-  try {
-    const { stdout } = await runCommand(
-      'gh',
-      ['pr', 'view', '--json', 'url,state,mergeable'],
-      { cwd: worktreePath },
-    );
-    const prData = JSON.parse(stdout) as { url: string; state: string; mergeable: string };
-
-    let ciStatus: CIStatus = { status: 'none', checks: [] };
-    try {
-      const { stdout: checksOutput } = await runCommand(
-        'gh',
-        ['pr', 'checks', '--json', 'bucket,name,state,link'],
-        { cwd: worktreePath },
-      );
-      const checks = JSON.parse(checksOutput) as CICheck[];
-
-      if (checks.length > 0) {
-        const hasFailed = checks.some((c) => c.bucket === 'fail');
-        const hasPending = checks.some((c) => c.bucket === 'pending');
-        const allPassed = checks.every((c) => c.bucket === 'pass' || c.bucket === 'skipping');
-
-        if (hasFailed) {
-          ciStatus = { status: 'failed', checks };
-        } else if (hasPending) {
-          ciStatus = { status: 'pending', checks };
-        } else if (allPassed) {
-          ciStatus = { status: 'passed', checks };
-        } else {
-          ciStatus = { status: 'unknown', checks };
-        }
-      }
-    } catch (checksError) {
-      const code = (checksError as { code?: number }).code;
-      if (code === 8) {
-        ciStatus = { status: 'pending', checks: [] };
-      }
-    }
-
-    return {
-      success: true,
-      exists: true,
-      url: prData.url,
-      state: prData.state,
-      mergeable: prData.mergeable,
-      ciStatus,
-    };
-  } catch {
-    return { success: true, exists: false };
-  }
+  const { provider, ctx } = await resolveForgeProvider(taskId, userId);
+  // Derive the branch from the worktree so Forgejo can match the PR by branch
+  // name (githubProvider ignores this arg and reads cwd instead, so it's harmless there).
+  const branch = await getBranchName(ctx.worktreePath);
+  return provider.getPRStatus(ctx, { branch });
 }
 
 /**
@@ -466,6 +417,7 @@ export async function getPullRequestStatus(
 export async function mergeAndCleanup(
   repoPath: string,
   taskId: number,
+  userId: number,
 ): Promise<RemoveWorktreeResult> {
   const worktreePath = getWorktreePath(repoPath, taskId);
 
@@ -473,11 +425,42 @@ export async function mergeAndCleanup(
     const branch = await getBranchName(worktreePath);
     const mainBranch = assertValidBranchName(await getDefaultBranch(repoPath), 'default branch');
 
+    const { provider, ctx } = await resolveForgeProvider(taskId, userId);
+
+    // For forgejo, mergePR requires the actual PR number; for github it is ignored.
+    // Resolve it once before the retry loop from the PR status URL.
+    // parsePrNumberFromUrl handles trailing slashes and query/fragment suffixes
+    // that a naive /\/(\d+)$/ regex would silently misparse as prNumber=0.
+    let prNumber: number | null = null;
+    if (branch) {
+      try {
+        const prStatus = await provider.getPRStatus(ctx, { branch });
+        if (prStatus.exists && prStatus.url) {
+          prNumber = parsePrNumberFromUrl(prStatus.url);
+          if (prNumber === null) {
+            throw new Error(
+              `Cannot determine PR number from URL '${prStatus.url}'. ` +
+              `Open the PR manually and merge it, or check the URL format.`,
+            );
+          }
+        }
+      } catch (prLookupError) {
+        // For providers that require a real PR number (Forgejo), propagate — silently
+        // proceeding with prNumber=0 would hit /pulls/0/merge. GitHub ignores prNumber.
+        if (ctx.type !== 'github') {
+          throw prLookupError;
+        }
+      }
+    }
+
+    // Fall back to 0 for providers (GitHub) that ignore prNumber entirely.
+    const resolvedPrNumber = prNumber ?? 0;
+
     let merged = false;
     let lastMergeError: Error | null = null;
     for (let mergeAttempt = 0; mergeAttempt < 3 && !merged; mergeAttempt++) {
       try {
-        await runCommand('gh', ['pr', 'merge', '--merge'], { cwd: worktreePath });
+        await provider.mergePR(ctx, { prNumber: resolvedPrNumber });
         merged = true;
       } catch (mergeError) {
         lastMergeError = mergeError instanceof Error ? mergeError : new Error(String(mergeError));

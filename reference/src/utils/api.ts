@@ -108,6 +108,7 @@ import type {
   AddProjectMemberResponse,
   RemoveProjectMemberResponse,
 } from '../../shared/api/admin';
+import type { ForgeConnectionRow, ForgeConnectionResponse } from '../../shared/types/db';
 import type {
   ListPromptsResponse,
   GetPromptResponse,
@@ -352,8 +353,15 @@ export const api = {
   projects: {
     list: (): TypedFetch<ListProjectsResponse> =>
       authenticatedFetch<ListProjectsResponse>('/api/projects'),
-    create: (name: string, repoFolderPath: string): TypedFetch<CreateProjectResponse> => {
+    create: (
+      name: string,
+      repoFolderPath: string,
+      forgeConnectionId?: number | null,
+    ): TypedFetch<CreateProjectResponse> => {
       const body: CreateProjectRequest = { name, repoFolderPath };
+      if (forgeConnectionId !== undefined) {
+        body.forgeConnectionId = forgeConnectionId;
+      }
       return authenticatedFetch<CreateProjectResponse>('/api/projects', {
         method: 'POST',
         body: JSON.stringify(body),
@@ -722,6 +730,40 @@ export const api = {
         `/api/admin/projects/${projectId}/members/${userId}`,
         { method: 'DELETE' }
       ),
+    // Forge connections management
+    listForgeConnections: (): TypedFetch<ForgeConnectionResponse[]> =>
+      authenticatedFetch<ForgeConnectionResponse[]>('/api/admin/forge-connections'),
+    createForgeConnection: (
+      type: 'github' | 'forgejo',
+      name: string,
+      base_url: string
+    ): TypedFetch<ForgeConnectionResponse> =>
+      authenticatedFetch<ForgeConnectionResponse>('/api/admin/forge-connections', {
+        method: 'POST',
+        body: JSON.stringify({ type, name, base_url }),
+      }),
+    setForgeConnectionEnabled: (
+      id: number,
+      enabled: boolean
+    ): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(`/api/admin/forge-connections/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      }),
+    deleteForgeConnection: (id: number): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(`/api/admin/forge-connections/${id}`, {
+        method: 'DELETE',
+      }),
+    // Bot token — write-only; responses never contain the stored value
+    setConnectionBotToken: (id: number, token: string): TypedFetch<{ ok: true }> =>
+      authenticatedFetch<{ ok: true }>(`/api/admin/forge-connections/${id}/token`, {
+        method: 'PUT',
+        body: JSON.stringify({ token }),
+      }),
+    deleteConnectionBotToken: (id: number): TypedFetch<{ ok: true }> =>
+      authenticatedFetch<{ ok: true }>(`/api/admin/forge-connections/${id}/token`, {
+        method: 'DELETE',
+      }),
   },
 
   // Global instance settings (key/value, e.g. internalToolName, githubPrTrigger).
@@ -777,6 +819,32 @@ export const api = {
       authenticatedFetch<unknown>(`/api/settings/prompts/${encodeURIComponent(name)}`, {
         method: 'DELETE',
       }),
+  },
+
+  // Forge connections — read-only list of enabled connections for all
+  // authenticated users. Used by ProjectForm to populate the forge selector.
+  forgeConnections: {
+    listEnabled: (): TypedFetch<ForgeConnectionRow[]> =>
+      authenticatedFetch<ForgeConnectionRow[]>('/api/forge-connections'),
+  },
+
+  // Per-user forge tokens — write-only PAT storage. Responses never contain
+  // the stored token value.
+  forgeTokens: {
+    listStatus: (): TypedFetch<{ connectionId: number; connected: boolean }[]> =>
+      authenticatedFetch<{ connectionId: number; connected: boolean }[]>(
+        '/api/me/forge-tokens',
+      ),
+    set: (connectionId: number, token: string): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>('/api/me/forge-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ connectionId, token }),
+      }),
+    delete: (connectionId: number): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(
+        `/api/me/forge-tokens/${connectionId}`,
+        { method: 'DELETE' },
+      ),
   },
 
   // Generic GET method for any endpoint. Returns `unknown` — callers must

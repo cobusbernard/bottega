@@ -73,6 +73,7 @@ export interface ProjectRow {
   serve_symlink_path: string | null;
   systemd_service_name: string | null;
   app_url: string | null;
+  forge_connection_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +168,23 @@ export interface SessionSummaryRow {
   session_id: string;
   mtime: number;
   summary_json: Buffer;
+}
+
+// ---- forge_connections ----------------------------------------------------
+
+export interface ForgeConnectionRow {
+  id: number;
+  type: 'github' | 'forgejo';
+  name: string;
+  base_url: string;
+  enabled: 0 | 1;
+  created_at: string;
+}
+
+// Admin list response — extends the DB row with a computed field that
+// indicates whether a bot token is configured (NEVER returns the value).
+export interface ForgeConnectionResponse extends ForgeConnectionRow {
+  botTokenConfigured: boolean;
 }
 
 // ---- app_settings ---------------------------------------------------------

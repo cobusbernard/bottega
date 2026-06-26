@@ -25,6 +25,8 @@ import {
   generatePrAgentReviewMessage,
   generateYoloMessage,
 } from '../constants/agentPrompts.js';
+import { getScriptsDir } from './promptRenderer.js';
+import { resolveForgeCli } from './forge/index.js';
 import { loadAgentModelSettings } from './agentModelSettings.js';
 import type { AgentRunRow, CreatedConversation } from '../database/db.js';
 import type {
@@ -100,26 +102,52 @@ export async function startAgentRun(
     case 'pr': {
       // IMPORTANT: Use main repo path (not worktree path) for getPullRequestStatus
       // getPullRequestStatus internally derives the worktree path from repo + taskId
-      const prStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
+      const prStatus = await getPullRequestStatus(
+        taskWithProject.repo_folder_path,
+        taskId,
+        // effectiveUserId is always a number here: task.user_id is always populated from DB
+        effectiveUserId!,
+      );
       const prUrl = prStatus.exists ? prStatus.url ?? null : null;
+      const forgeCliRaw = resolveForgeCli(taskId);
+      // For Forgejo: render a tsx-invocable path with --user/--task injected so the
+      // agent can run it directly. For GitHub keep the plain 'gh' binary unchanged.
+      const forgeCli = forgeCliRaw === 'forge'
+        ? `tsx ${getScriptsDir()}/forge.ts`
+        : 'gh';
+      const forgeArgs = forgeCliRaw === 'forge' && effectiveUserId != null
+        ? ` --user ${effectiveUserId} --task ${taskId}`
+        : '';
 
       // Use review-specific prompt if triggered by webhook with review comments
       // Use comment-specific prompt if triggered by webhook with single comment context
       const webhookCtx = options.webhookContext;
       if (webhookCtx?.comments) {
         // Shape is validated by the webhook route (commit 5: zod boundary).
-        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never);
+        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli, forgeArgs);
       } else if (webhookCtx) {
-        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never);
+        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli, forgeArgs);
       } else {
-        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl);
+        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl, forgeCli, forgeArgs);
       }
       break;
     }
     case 'yolo': {
-      const yoloPrStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
+      const yoloPrStatus = await getPullRequestStatus(
+        taskWithProject.repo_folder_path,
+        taskId,
+        // effectiveUserId is always a number here: task.user_id is always populated from DB
+        effectiveUserId!,
+      );
       const yoloPrUrl = yoloPrStatus.exists ? yoloPrStatus.url ?? null : null;
-      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl);
+      const yoloForgeCliRaw = resolveForgeCli(taskId);
+      const yoloForgeCli = yoloForgeCliRaw === 'forge'
+        ? `tsx ${getScriptsDir()}/forge.ts`
+        : 'gh';
+      const yoloForgeArgs = yoloForgeCliRaw === 'forge' && effectiveUserId != null
+        ? ` --user ${effectiveUserId} --task ${taskId}`
+        : '';
+      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl, yoloForgeCli, yoloForgeArgs);
       break;
     }
     default:

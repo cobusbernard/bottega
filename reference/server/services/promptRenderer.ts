@@ -41,6 +41,16 @@ export function getTemplatesDir(): string {
   return getOverridesDir('template');
 }
 
+/**
+ * Return the absolute path to the `scripts/` directory of this Bottega install,
+ * derived from this module's own location so it works regardless of where the
+ * repo is cloned. This file lives at reference/server/services/, so we go up
+ * two levels to reach reference/ and then into scripts/.
+ */
+export function getScriptsDir(): string {
+  return path.resolve(__dirname, '../../scripts');
+}
+
 export interface PromptDefinition {
   name: string;
   label: string;
@@ -55,14 +65,14 @@ const PROMPT_DEFINITIONS: PromptDefinition[] = [
     label: 'Planification',
     kind: 'prompt',
     file: 'planification.md',
-    variables: ['taskDocPath', 'taskId', 'planTemplatePath'],
+    variables: ['taskDocPath', 'taskId', 'planTemplatePath', 'scriptsDir'],
   },
   {
     name: 'planification-nontechnical',
     label: 'Planification (non-technical)',
     kind: 'prompt',
     file: 'planification-nontechnical.md',
-    variables: ['taskDocPath', 'taskId', 'planTemplatePath'],
+    variables: ['taskDocPath', 'taskId', 'planTemplatePath', 'scriptsDir'],
   },
   {
     name: 'implementation',
@@ -76,7 +86,7 @@ const PROMPT_DEFINITIONS: PromptDefinition[] = [
     label: 'Review',
     kind: 'prompt',
     file: 'review.md',
-    variables: ['taskDocPath', 'taskId'],
+    variables: ['taskDocPath', 'taskId', 'scriptsDir'],
   },
   {
     name: 'refinement',
@@ -90,21 +100,21 @@ const PROMPT_DEFINITIONS: PromptDefinition[] = [
     label: 'PR Agent',
     kind: 'prompt',
     file: 'pr.md',
-    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock'],
+    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock', 'forgeCli', 'forgeArgs', 'ciLogHint', 'scriptsDir'],
   },
   {
     name: 'yolo',
     label: 'YOLO Agent',
     kind: 'prompt',
     file: 'yolo.md',
-    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock'],
+    variables: ['taskDocPath', 'taskId', 'prContextLine', 'prCreateOrVerifyBlock', 'forgeCli', 'forgeArgs', 'ciLogHint', 'scriptsDir'],
   },
   {
     name: 'pr-feedback',
     label: 'PR Feedback Response',
     kind: 'prompt',
     file: 'pr-feedback.md',
-    variables: ['taskDocPath', 'taskId', 'prUrl', 'feedbackSection'],
+    variables: ['taskDocPath', 'taskId', 'prUrl', 'feedbackSection', 'forgeCli', 'forgeArgs', 'ciLogHint', 'scriptsDir'],
   },
   {
     name: 'plan-template',

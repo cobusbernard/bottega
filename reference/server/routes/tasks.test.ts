@@ -1080,7 +1080,7 @@ describe('Tasks Routes - Phase 3', () => {
       expect(response.status).toBe(200);
       expect(hasUncommittedChanges).toHaveBeenCalledWith('/path/to/repo', 1);
       expect(commitAllChanges).not.toHaveBeenCalled();
-      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Add feature', 'Description');
+      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Add feature', 'Description', testUserId);
       expect(response.body.success).toBe(true);
       expect(response.body.url).toBe('https://github.com/user/repo/pull/123');
     });
@@ -1109,7 +1109,7 @@ describe('Tasks Routes - Phase 3', () => {
       expect(hasUncommittedChanges).toHaveBeenCalledWith('/path/to/repo', 1);
       // Now uses PR title for commit message (via prService.createOrUpdatePR)
       expect(commitAllChanges).toHaveBeenCalledWith('/path/to/repo', 1, 'Add feature');
-      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Add feature', 'Description');
+      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Add feature', 'Description', testUserId);
       expect(response.body.success).toBe(true);
     });
 
@@ -1209,7 +1209,7 @@ describe('Tasks Routes - Phase 3', () => {
         .post('/api/tasks/1/pull-request')
         .send({ title: 'Title only' });
 
-      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Title only', '');
+      expect(createPullRequest).toHaveBeenCalledWith('/path/to/repo', 1, 'Title only', '', testUserId);
     });
 
     it('should return 404 for non-existent task', async () => {
@@ -1283,7 +1283,7 @@ describe('Tasks Routes - Phase 3', () => {
       const response = await request(app).post('/api/tasks/1/merge-cleanup');
 
       expect(response.status).toBe(200);
-      expect(mergeAndCleanup).toHaveBeenCalledWith('/path/to/repo', 1);
+      expect(mergeAndCleanup).toHaveBeenCalledWith('/path/to/repo', 1, testUserId);
       expect(response.body.success).toBe(true);
     });
 

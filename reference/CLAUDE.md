@@ -135,7 +135,7 @@ definition of done here; do not report work complete on a red or un-run gate.
 
 ## Git workflow (this is an independent fork)
 
-This repo is a fork. `origin` = **`bketelsen/bottega`** (push here). `upstream` =
+This repo is a fork. `origin` = **`cobusbernard/bottega`** (push here). `upstream` =
 `vdaubry/bottega` (fetch-only; pull manually with `git fetch upstream && git merge
 upstream/main`). Personalizations are **not** sent upstream.
 
@@ -145,10 +145,10 @@ the mistake to avoid):
 
 ```bash
 git push -u origin <branch>
-gh pr create --repo bketelsen/bottega --base main --head <branch> \
+gh pr create --repo cobusbernard/bottega --base main --head <branch> \
   --title "..." --body "..."
 # merging is a human decision; hand over the command, do not auto-merge:
-#   gh pr merge <n> --repo bketelsen/bottega --squash --delete-branch
+#   gh pr merge <n> --repo cobusbernard/bottega --squash --delete-branch
 ```
 
 If you ever omit `--repo`/`--base`, STOP and re-create the PR — a PR opened against

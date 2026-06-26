@@ -9,6 +9,7 @@ import type {
   AgentType,
   AppSettingRow,
   ConversationRow,
+  ForgeConnectionRow,
   ProjectMemberRow,
   ProjectRow,
   Provider,
@@ -450,6 +451,11 @@ const runMigrations = (): void => {
       db.exec('ALTER TABLE projects ADD COLUMN app_url TEXT DEFAULT NULL');
     }
 
+    if (!projectColumnNames.includes('forge_connection_id')) {
+      console.log('Running migration: Adding forge_connection_id column to projects');
+      db.exec('ALTER TABLE projects ADD COLUMN forge_connection_id INTEGER REFERENCES forge_connections(id)');
+    }
+
     if (!columnNames.includes('is_admin')) {
       console.log('Running migration: Adding is_admin column to users');
       db.exec('ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT 0');
@@ -825,6 +831,7 @@ export interface ProjectUpdates {
   name?: string;
   repo_folder_path?: string;
   subproject_path?: string | null;
+  forge_connection_id?: number | null;
 }
 
 export interface WebServerConfig {
@@ -904,6 +911,7 @@ const projectsDb = {
       'name',
       'repo_folder_path',
       'subproject_path',
+      'forge_connection_id',
     ];
     const setClause: string[] = [];
     const values: unknown[] = [];
@@ -1473,6 +1481,44 @@ const agentRunsDb = {
 };
 
 // ---------------------------------------------------------------------------
+// forgeConnectionsDb
+// ---------------------------------------------------------------------------
+
+const forgeConnectionsDb = {
+  list: (): ForgeConnectionRow[] =>
+    db
+      .prepare('SELECT * FROM forge_connections ORDER BY created_at ASC')
+      .all() as ForgeConnectionRow[],
+
+  listEnabled: (): ForgeConnectionRow[] =>
+    db
+      .prepare('SELECT * FROM forge_connections WHERE enabled = 1 ORDER BY created_at ASC')
+      .all() as ForgeConnectionRow[],
+
+  getById: (id: number): ForgeConnectionRow | undefined =>
+    db
+      .prepare('SELECT * FROM forge_connections WHERE id = ?')
+      .get(id) as ForgeConnectionRow | undefined,
+
+  create: (input: { type: 'github' | 'forgejo'; name: string; base_url: string }): ForgeConnectionRow => {
+    const result = db
+      .prepare('INSERT INTO forge_connections (type, name, base_url) VALUES (?, ?, ?)')
+      .run(input.type, input.name, input.base_url);
+    return forgeConnectionsDb.getById(lastInsertId(result.lastInsertRowid))!;
+  },
+
+  setEnabled: (id: number, enabled: boolean): void => {
+    db
+      .prepare('UPDATE forge_connections SET enabled = ? WHERE id = ?')
+      .run(enabled ? 1 : 0, id);
+  },
+
+  remove: (id: number): void => {
+    db.prepare('DELETE FROM forge_connections WHERE id = ?').run(id);
+  },
+};
+
+// ---------------------------------------------------------------------------
 // appSettingsDb
 // ---------------------------------------------------------------------------
 
@@ -1556,6 +1602,7 @@ export {
   agentRunsDb,
   appSettingsDb,
   userAgentModelSettingsDb,
+  forgeConnectionsDb,
 };
 
 // Re-export the row types so `.js` consumers can JSDoc-import from this module
@@ -1572,4 +1619,5 @@ export type {
   AgentRunStatus,
   AppSettingRow,
   UserAgentModelSettingsRow,
+  ForgeConnectionRow,
 };

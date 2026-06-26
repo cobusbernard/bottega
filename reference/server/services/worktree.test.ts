@@ -11,6 +11,26 @@ const { mockRunCommand, mockAccess, mockMkdir, mockSymlink, mockExistsSync } = v
   }),
 );
 
+// Mock resolveForgeProvider to return githubProvider with a synthetic GitHub ctx,
+// preserving the existing runCommand assertions (githubProvider uses the same mocked shell).
+vi.mock('./forge/index.js', async () => {
+  const { githubProvider } = await import('./forge/githubProvider.js');
+  return {
+    resolveForgeProvider: vi.fn().mockResolvedValue({
+      provider: githubProvider,
+      ctx: {
+        type: 'github' as const,
+        baseUrl: 'https://github.com',
+        owner: '',
+        repo: '',
+        token: null,
+        worktreePath: '/mock-worktree',
+      },
+      cli: 'gh' as const,
+    }),
+  };
+});
+
 // Mock the central shell helper. Every shell-out in worktree.ts is now
 // supposed to flow through runCommand(cmd, args[], opts), so we can assert
 // on (cmd, args) shape directly — and adversarial inputs end up as argv
@@ -55,6 +75,7 @@ import {
   commitAllChanges,
   pushChanges,
 } from './worktree.js';
+import { resolveForgeProvider } from './forge/index.js';
 
 // Helper: configure mockRunCommand to dispatch on (cmd, args) so each test
 // only has to declare the responses it cares about.
@@ -441,7 +462,7 @@ describe('Worktree Service', () => {
       const adversarialTitle = 'task $(whoami) `id` "quoted"';
       const adversarialBody = "It's $(rm -rf ~) \"quoted\" `evil`";
 
-      const result = await createPullRequest('/repo', 1, adversarialTitle, adversarialBody);
+      const result = await createPullRequest('/repo', 1, adversarialTitle, adversarialBody, 1);
 
       expect(result.success).toBe(true);
       expect(capturedTitle).toBe(adversarialTitle);
@@ -455,7 +476,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await createPullRequest('/repo', 10, 'Title', 'Body');
+      const result = await createPullRequest('/repo', 10, 'Title', 'Body', 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not authenticated');
@@ -467,7 +488,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await createPullRequest('/repo', 1, 'Title', 'Body');
+      const result = await createPullRequest('/repo', 1, 'Title', 'Body', 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/branch/i);
@@ -485,7 +506,7 @@ describe('Worktree Service', () => {
         stderr: '',
       }));
 
-      const result = await getPullRequestStatus('/repo', 10);
+      const result = await getPullRequestStatus('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(true);
@@ -499,7 +520,7 @@ describe('Worktree Service', () => {
         throw new Error('no pull request found');
       });
 
-      const result = await getPullRequestStatus('/repo', 10);
+      const result = await getPullRequestStatus('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(false);
@@ -516,7 +537,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(calls.some((c) => c.join(' ').includes('gh pr merge --merge'))).toBe(true);
@@ -545,7 +566,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(mergeCallCount).toBe(2);
@@ -567,7 +588,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
     }, 20000);
@@ -584,7 +605,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not mergeable');
@@ -657,6 +678,108 @@ describe('Worktree Service', () => {
         (c) => c[0] === 'git' && (c[1] as string[])[0] === 'push',
       );
       expect(pushCall![1]).toEqual(['push', 'origin', 'task/1-test']);
+    });
+  });
+
+  describe('Forgejo-specific behaviour', () => {
+    // Build a minimal fake Forgejo provider so the tests don't depend on the
+    // real forgejoProvider (which makes live HTTP calls).
+    function makeForgejoResolvedForge(
+      getPRStatusImpl: (ctx: unknown, args: { branch: string | null }) => Promise<unknown>,
+      mergePRImpl: (ctx: unknown, args: { prNumber: number }) => Promise<void> = vi.fn().mockResolvedValue(undefined),
+    ) {
+      return {
+        provider: {
+          createPR: vi.fn(),
+          getPRStatus: getPRStatusImpl,
+          mergePR: mergePRImpl,
+          getPRBranch: vi.fn(),
+          getReviewComments: vi.fn(),
+        },
+        ctx: {
+          type: 'forgejo' as const,
+          baseUrl: 'https://git.example.com',
+          owner: 'testorg',
+          repo: 'testrepo',
+          token: 'tok',
+          worktreePath: '/repo-worktrees/task-10',
+        },
+        cli: 'forge' as const,
+      };
+    }
+
+    describe('getPullRequestStatus', () => {
+      it('passes a non-null branch derived from the worktree to getPRStatus', async () => {
+        const getPRStatusSpy = vi.fn().mockResolvedValue({ success: true, exists: false });
+        vi.mocked(resolveForgeProvider).mockResolvedValueOnce(
+          makeForgejoResolvedForge(getPRStatusSpy) as ReturnType<typeof resolveForgeProvider> extends Promise<infer T> ? T : never,
+        );
+
+        withDispatch(async (_cmd, args) => {
+          if (args.includes('--show-current')) return { stdout: 'task/10-forgejo-branch\n', stderr: '' };
+          return { stdout: '', stderr: '' };
+        });
+
+        await getPullRequestStatus('/repo', 10, 1);
+
+        expect(getPRStatusSpy).toHaveBeenCalledTimes(1);
+        const passedArgs = getPRStatusSpy.mock.calls[0]![1] as { branch: string | null };
+        expect(passedArgs.branch).not.toBeNull();
+        expect(passedArgs.branch).toBe('task/10-forgejo-branch');
+      });
+    });
+
+    describe('mergeAndCleanup', () => {
+      it('surfaces a clear error when the PR URL cannot be parsed, and does not call mergePR', async () => {
+        const mergePRSpy = vi.fn();
+        vi.mocked(resolveForgeProvider).mockResolvedValueOnce(
+          makeForgejoResolvedForge(
+            vi.fn().mockResolvedValue({
+              success: true,
+              exists: true,
+              url: 'https://git.example.com/owner/repo/issues/42', // not a pulls URL
+            }),
+            mergePRSpy,
+          ) as ReturnType<typeof resolveForgeProvider> extends Promise<infer T> ? T : never,
+        );
+
+        withDispatch(async (_cmd, args) => {
+          if (args.includes('--show-current')) return { stdout: 'task/10-feature\n', stderr: '' };
+          if (args.includes('symbolic-ref')) return { stdout: 'main\n', stderr: '' };
+          return { stdout: '', stderr: '' };
+        });
+
+        const result = await mergeAndCleanup('/repo', 10, 1);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toMatch(/Cannot determine PR number/);
+        expect(mergePRSpy).not.toHaveBeenCalled();
+      });
+
+      it('merges successfully for Forgejo when a valid PR URL is returned', async () => {
+        const mergePRSpy = vi.fn().mockResolvedValue(undefined);
+        vi.mocked(resolveForgeProvider).mockResolvedValueOnce(
+          makeForgejoResolvedForge(
+            vi.fn().mockResolvedValue({
+              success: true,
+              exists: true,
+              url: 'https://git.example.com/testorg/testrepo/pulls/7',
+            }),
+            mergePRSpy,
+          ) as ReturnType<typeof resolveForgeProvider> extends Promise<infer T> ? T : never,
+        );
+
+        withDispatch(async (_cmd, args) => {
+          if (args.includes('--show-current')) return { stdout: 'task/10-feature\n', stderr: '' };
+          if (args.includes('symbolic-ref')) return { stdout: 'main\n', stderr: '' };
+          return { stdout: '', stderr: '' };
+        });
+
+        const result = await mergeAndCleanup('/repo', 10, 1);
+
+        expect(result.success).toBe(true);
+        expect(mergePRSpy).toHaveBeenCalledWith(expect.anything(), { prNumber: 7 });
+      });
     });
   });
 });

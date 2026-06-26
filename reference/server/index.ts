@@ -76,6 +76,8 @@ import webhooksRoutes from './routes/webhooks.js';
 import settingsRoutes from './routes/settings.js';
 import appSettingsRoutes from './routes/appSettings.js';
 import userAgentModelSettingsRoutes from './routes/userAgentModelSettings.js';
+import forgeConnectionsPublicRoutes from './routes/forgeConnectionsPublic.js';
+import forgeTokensRoutes from './routes/forgeTokens.js';
 import { initializeDatabase, agentRunsDb } from './database/db.js';
 import { getProject } from './services/projectService.js';
 import { transcribeAudio } from './services/transcription.js';
@@ -217,6 +219,10 @@ app.use('/api', authenticateToken, agentRunsRoutes);
 app.use('/api', authenticateToken, webServerRoutes);
 app.use('/api/settings', authenticateToken, settingsRoutes);
 app.use('/api/user-agent-model-settings', authenticateToken, userAgentModelSettingsRoutes);
+
+// Forge connections (read-only, non-admin) + per-user forge tokens
+app.use('/api/forge-connections', authenticateToken, forgeConnectionsPublicRoutes);
+app.use('/api/me/forge-tokens', authenticateToken, forgeTokensRoutes);
 
 app.use('/api/admin', authenticateToken, requireAdmin, adminRoutes);
 

@@ -10,6 +10,7 @@ export const CreateProjectBodySchema = z.object({
     .trim()
     .min(1, 'Repository folder path is required'),
   subprojectPath: z.string().optional(),
+  forgeConnectionId: z.number().int().positive().nullable().optional(),
 });
 export type CreateProjectBody = z.infer<typeof CreateProjectBodySchema>;
 
@@ -19,5 +20,6 @@ export const UpdateProjectBodySchema = z.object({
   // The DB layer accepts `null` to clear the column, and the existing
   // type `UpdateProjectRequest` allows `undefined`. Be permissive here.
   subprojectPath: z.string().nullable().optional(),
+  forgeConnectionId: z.number().int().positive().nullable().optional(),
 });
 export type UpdateProjectBody = z.infer<typeof UpdateProjectBodySchema>;
