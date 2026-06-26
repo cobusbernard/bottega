@@ -207,6 +207,13 @@ describe('Forge Connections Routes', () => {
       expect(res.status).toBe(403);
     });
 
+    it('PATCH returns 403', async () => {
+      const res = await request(app)
+        .patch('/api/admin/forge-connections/1')
+        .send({ enabled: true });
+      expect(res.status).toBe(403);
+    });
+
     it('DELETE returns 403', async () => {
       const res = await request(app).delete('/api/admin/forge-connections/1');
       expect(res.status).toBe(403);
