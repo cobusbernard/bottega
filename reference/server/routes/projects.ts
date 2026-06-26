@@ -52,7 +52,7 @@ router.post(
   ) => {
     try {
       const userId = req.user!.id;
-      const { name, repoFolderPath, subprojectPath } = req.validated!.body as CreateProjectBody;
+      const { name, repoFolderPath, subprojectPath, forgeConnectionId } = req.validated!.body as CreateProjectBody;
 
       const project = projectsDb.create(
         userId,
@@ -60,6 +60,15 @@ router.post(
         repoFolderPath.trim(),
         subprojectPath?.trim() || null,
       );
+
+      // If a forge connection was selected, attach it now via the update path
+      // so the response reflects forge_connection_id without modifying projectsDb.create.
+      if (forgeConnectionId !== undefined && forgeConnectionId !== null) {
+        const updated = updateProject(project.id, userId, { forge_connection_id: forgeConnectionId });
+        if (updated) {
+          return res.status(201).json(updated);
+        }
+      }
 
       // The pre-TS handler returned the `projectsDb.create` summary
       // directly (camelCase keys, no created_at). Preserving that exact
@@ -124,8 +133,8 @@ router.put(
       if (body.subprojectPath !== undefined) {
         updates.subproject_path = body.subprojectPath?.trim() || null;
       }
-      if (body.forge_connection_id !== undefined) {
-        updates.forge_connection_id = body.forge_connection_id;
+      if (body.forgeConnectionId !== undefined) {
+        updates.forge_connection_id = body.forgeConnectionId;
       }
 
       const project = updateProject(projectId, userId, updates);

@@ -116,6 +116,28 @@ describe('Projects Routes - Phase 3', () => {
       expect(Array.isArray(response.body.issues)).toBe(true);
     });
 
+    it('should create project with forgeConnectionId and persist it', async () => {
+      const createdProject = { id: 7, userId: testUserId, name: 'Forge Project', repoFolderPath: '/path/forge' };
+      const updatedProject = {
+        id: 7,
+        user_id: testUserId,
+        name: 'Forge Project',
+        repo_folder_path: '/path/forge',
+        forge_connection_id: 5,
+      };
+      vi.mocked(projectsDb.create).mockReturnValue(createdProject as never);
+      vi.mocked(updateProject).mockReturnValue(updatedProject as never);
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Forge Project', repoFolderPath: '/path/forge', forgeConnectionId: 5 });
+
+      expect(response.status).toBe(201);
+      expect(response.body.forge_connection_id).toBe(5);
+      // forgeConnectionId must reach the DB update as snake_case
+      expect(updateProject).toHaveBeenCalledWith(7, testUserId, { forge_connection_id: 5 });
+    });
+
     it('should return 409 on duplicate repo path', async () => {
       vi.mocked(projectsDb.create).mockImplementation(() => {
         const error = new Error('UNIQUE constraint failed') as Error & { code: string };
@@ -175,7 +197,7 @@ describe('Projects Routes - Phase 3', () => {
       expect(updateProject).toHaveBeenCalledWith(1, testUserId, { name: 'Updated Name' });
     });
 
-    it('should persist forge_connection_id when provided', async () => {
+    it('should persist forgeConnectionId when provided', async () => {
       const updatedProject = {
         id: 1,
         user_id: testUserId,
@@ -187,14 +209,15 @@ describe('Projects Routes - Phase 3', () => {
 
       const response = await request(app)
         .put('/api/projects/1')
-        .send({ forge_connection_id: 3 });
+        .send({ forgeConnectionId: 3 });
 
       expect(response.status).toBe(200);
       expect(response.body.forge_connection_id).toBe(3);
+      // Route maps camelCase forgeConnectionId → snake_case DB field
       expect(updateProject).toHaveBeenCalledWith(1, testUserId, { forge_connection_id: 3 });
     });
 
-    it('should clear forge_connection_id when set to null', async () => {
+    it('should clear forge_connection_id when forgeConnectionId is set to null', async () => {
       const updatedProject = {
         id: 1,
         user_id: testUserId,
@@ -206,10 +229,11 @@ describe('Projects Routes - Phase 3', () => {
 
       const response = await request(app)
         .put('/api/projects/1')
-        .send({ forge_connection_id: null });
+        .send({ forgeConnectionId: null });
 
       expect(response.status).toBe(200);
       expect(response.body.forge_connection_id).toBeNull();
+      // Route maps camelCase forgeConnectionId → snake_case DB field
       expect(updateProject).toHaveBeenCalledWith(1, testUserId, { forge_connection_id: null });
     });
 

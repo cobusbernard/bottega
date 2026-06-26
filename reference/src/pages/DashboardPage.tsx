@@ -16,6 +16,7 @@ import type { ProjectRow, TaskRow } from '../../shared/types/db';
 interface ProjectSubmitPayload {
   name: string;
   repoFolderPath: string;
+  forgeConnectionId?: number | null;
 }
 
 interface ActionResult {
@@ -59,10 +60,11 @@ function DashboardPage() {
   const handleProjectSubmit = async ({
     name,
     repoFolderPath,
+    forgeConnectionId,
   }: ProjectSubmitPayload): Promise<ActionResult> => {
     setIsCreatingProject(true);
     try {
-      const result = await createProject(name, repoFolderPath);
+      const result = await createProject(name, repoFolderPath, forgeConnectionId);
       if (result.success) {
         setShowProjectForm(false);
       }

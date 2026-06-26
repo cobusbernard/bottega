@@ -23,6 +23,7 @@ export interface CreateProjectRequest {
   name: string;
   repoFolderPath: string;
   subprojectPath?: string;
+  forgeConnectionId?: number | null;
 }
 
 export type CreateProjectResponse = ProjectRow;
@@ -31,7 +32,7 @@ export interface UpdateProjectRequest {
   name?: string | undefined;
   repoFolderPath?: string | undefined;
   subprojectPath?: string | undefined;
-  forge_connection_id?: number | null | undefined;
+  forgeConnectionId?: number | null | undefined;
 }
 
 export type UpdateProjectResponse = ProjectRow;

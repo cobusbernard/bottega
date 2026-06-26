@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ProjectForm from './ProjectForm';
 
 // Mock the api module so tests don't make real HTTP calls
@@ -40,13 +40,18 @@ describe('ProjectForm', () => {
       buildMockResponse([])    );
   });
 
-  it('renders the form when open', () => {
-    render(<ProjectForm {...baseProps} />);
+  it('renders the form when open', async () => {
+    await act(async () => {
+      render(<ProjectForm {...baseProps} />);
+    });
     expect(screen.getByText('Create New Project')).toBeInTheDocument();
   });
 
-  it('returns null when closed', () => {
-    const { container } = render(<ProjectForm {...baseProps} isOpen={false} />);
+  it('returns null when closed', async () => {
+    let container!: HTMLElement;
+    await act(async () => {
+      ({ container } = render(<ProjectForm {...baseProps} isOpen={false} />));
+    });
     expect(container.firstChild).toBeNull();
   });
 

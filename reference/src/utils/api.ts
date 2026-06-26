@@ -353,8 +353,15 @@ export const api = {
   projects: {
     list: (): TypedFetch<ListProjectsResponse> =>
       authenticatedFetch<ListProjectsResponse>('/api/projects'),
-    create: (name: string, repoFolderPath: string): TypedFetch<CreateProjectResponse> => {
+    create: (
+      name: string,
+      repoFolderPath: string,
+      forgeConnectionId?: number | null,
+    ): TypedFetch<CreateProjectResponse> => {
       const body: CreateProjectRequest = { name, repoFolderPath };
+      if (forgeConnectionId !== undefined) {
+        body.forgeConnectionId = forgeConnectionId;
+      }
       return authenticatedFetch<CreateProjectResponse>('/api/projects', {
         method: 'POST',
         body: JSON.stringify(body),

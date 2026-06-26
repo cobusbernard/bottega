@@ -91,6 +91,7 @@ export interface TaskContextValue {
   createProject: (
     name: string,
     repoFolderPath: string,
+    forgeConnectionId?: number | null,
   ) => Promise<CreateProjectResult>;
   updateProject: (
     id: number,
@@ -262,9 +263,10 @@ export function TaskContextProvider({ children }: { children: ReactNode }) {
     async (
       name: string,
       repoFolderPath: string,
+      forgeConnectionId?: number | null,
     ): Promise<CreateProjectResult> => {
       try {
-        const response = await api.projects.create(name, repoFolderPath);
+        const response = await api.projects.create(name, repoFolderPath, forgeConnectionId);
         if (response.ok) {
           const newProject = await response.json();
           setProjects((prev) => [...prev, newProject]);

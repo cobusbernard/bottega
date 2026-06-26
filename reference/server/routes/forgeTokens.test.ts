@@ -8,6 +8,13 @@ vi.mock('../database/db.js', () => ({
     listEnabled: vi.fn(),
     getById: vi.fn(),
   },
+  // userDb is used by authenticateToken — provide enough of the shape so the
+  // no-token path (which never reaches userDb calls) can import the middleware.
+  userDb: {
+    getFirstUser: vi.fn(),
+    getTokenVersion: vi.fn(),
+    getUserById: vi.fn(),
+  },
 }));
 
 // Mock the forge credentials service (filesystem-backed).
@@ -18,6 +25,7 @@ vi.mock('../services/forgeCredentials.js', () => ({
 }));
 
 import forgeTokensRoutes from './forgeTokens.js';
+import { authenticateToken } from '../middleware/auth.js';
 import { forgeConnectionsDb } from '../database/db.js';
 import { setForgeToken, getForgeToken, deleteForgeToken } from '../services/forgeCredentials.js';
 
@@ -146,20 +154,19 @@ describe('POST /api/me/forge-tokens', () => {
     expect(setForgeToken).not.toHaveBeenCalled();
   });
 
-  it('returns 401 when no user is authenticated', async () => {
-    // Build a separate app without the mock auth middleware
+  it('returns 401 when no Authorization header is sent', async () => {
+    // Build an app with the real authenticateToken middleware so we verify the
+    // actual security boundary — not a 500 from req.user!.id being undefined.
     const unauthApp = express();
     unauthApp.use(express.json());
+    unauthApp.use(authenticateToken);
     unauthApp.use('/api/me/forge-tokens', forgeTokensRoutes);
 
     const res = await request(unauthApp)
       .post('/api/me/forge-tokens')
       .send({ connectionId: 1, token: 'tok' });
 
-    // The route reads req.user!.id — without a user it should throw 500 or the
-    // caller should mount authenticateToken (which returns 401). In unit tests
-    // without the middleware we accept either 4xx or 5xx as "not 201".
-    expect(res.status).not.toBe(201);
+    expect(res.status).toBe(401);
   });
 });
 
