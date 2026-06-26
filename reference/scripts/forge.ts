@@ -57,6 +57,18 @@ export function parseForgeArgv(argv: string[]): {
   return { cmd, sub, flags };
 }
 
+/**
+ * Extract the PR number from a Forgejo (`/pulls/{n}`) or GitHub (`/pull/{n}`) URL.
+ * Anchoring to the `pull(s)` path segment avoids misreading numeric org/namespace
+ * segments (e.g. `https://git.example.com/123/repo/pulls/42` → 42, not 123).
+ * Pure function; safe to import for unit testing with no side effects.
+ */
+export function parsePrNumberFromUrl(url: string | undefined): number | null {
+  if (!url) return null;
+  const match = url.match(/\/(?:pull|pulls)\/(\d+)(?:[/?#]|$)/);
+  return match ? Number(match[1]) : null;
+}
+
 /** Map CIStatus.status to a gh-compatible exit code. */
 function ciStatusToExitCode(status: string | undefined): number {
   switch (status) {
@@ -149,9 +161,9 @@ async function main(): Promise<void> {
 
       const exitCode = ciStatusToExitCode(ci?.status);
       process.exit(exitCode);
-      break;
     }
 
+    // eslint-disable-next-line no-fallthrough -- process.exit() above is terminal (never returns)
     case 'view': {
       const jsonFlag = typeof flags['json'] === 'string' ? flags['json'] : '';
       const fields = jsonFlag ? jsonFlag.split(',').map((f) => f.trim()) : [];
@@ -180,8 +192,7 @@ async function main(): Promise<void> {
 
       // PullRequestStatusResult does not carry prNumber directly.
       // Attempt to extract it from the PR URL as a best-effort.
-      const urlMatch = status.url?.match(/\/(\d+)(?:$|[/?#])/);
-      const prNumber = urlMatch ? parseInt(urlMatch[1]!, 10) : NaN;
+      const prNumber = parsePrNumberFromUrl(status.url) ?? NaN;
 
       if (isNaN(prNumber)) {
         console.error(
