@@ -46,4 +46,58 @@ describe('forgeCredentials', () => {
   it('deleteForgeToken is idempotent when file is absent', () => {
     expect(() => deleteForgeToken(1, 99)).not.toThrow();
   });
+
+  describe('id validation — all three functions reject invalid ids', () => {
+    const cases: Array<[string, number]> = [
+      ['zero userId', 0],
+      ['negative userId', -1],
+      ['non-integer userId', 1.5],
+    ];
+
+    for (const [label, badUserId] of cases) {
+      it(`setForgeToken throws on ${label}`, () => {
+        expect(() => setForgeToken(badUserId, 5, 'tok')).toThrow();
+      });
+
+      it(`getForgeToken throws on ${label}`, () => {
+        expect(() => getForgeToken(badUserId, 5)).toThrow();
+      });
+
+      it(`deleteForgeToken throws on ${label}`, () => {
+        expect(() => deleteForgeToken(badUserId, 5)).toThrow();
+      });
+    }
+
+    const connCases: Array<[string, number]> = [
+      ['zero connectionId', 0],
+      ['negative connectionId', -1],
+      ['non-integer connectionId', 2.7],
+    ];
+
+    for (const [label, badConnId] of connCases) {
+      it(`setForgeToken throws on ${label}`, () => {
+        expect(() => setForgeToken(1, badConnId, 'tok')).toThrow();
+      });
+
+      it(`getForgeToken throws on ${label}`, () => {
+        expect(() => getForgeToken(1, badConnId)).toThrow();
+      });
+
+      it(`deleteForgeToken throws on ${label}`, () => {
+        expect(() => deleteForgeToken(1, badConnId)).toThrow();
+      });
+    }
+  });
+
+  it('forge_tokens directory is created with mode 0700', () => {
+    setForgeToken(1, 5, 'pat_abc');
+    const dir = path.join(tempRoot, '1', 'forge_tokens');
+    expect(fs.statSync(dir).mode & 0o777).toBe(0o700);
+  });
+
+  it('setForgeToken throws on whitespace-only token and writes no file', () => {
+    expect(() => setForgeToken(1, 5, '   ')).toThrow();
+    const tokenPath = path.join(tempRoot, '1', 'forge_tokens', '5');
+    expect(fs.existsSync(tokenPath)).toBe(false);
+  });
 });
