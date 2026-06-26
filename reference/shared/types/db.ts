@@ -73,6 +73,7 @@ export interface ProjectRow {
   serve_symlink_path: string | null;
   systemd_service_name: string | null;
   app_url: string | null;
+  forge_connection_id: number | null;
   created_at: string;
   updated_at: string;
 }
