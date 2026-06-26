@@ -1,6 +1,8 @@
 import { tasksDb, projectsDb, forgeConnectionsDb } from '../../database/db.js';
 import { getForgeToken } from '../forgeCredentials.js';
 import { githubProvider } from './githubProvider.js';
+import { forgejoProvider } from './forgejoProvider.js';
+import { runCommand } from '../shell.js';
 import { getWorktreePath } from '../worktree.js';
 import type { ForgeProvider, ForgeContext } from './types.js';
 
@@ -8,6 +10,26 @@ export interface ResolvedForge {
   provider: ForgeProvider;
   ctx: ForgeContext;
   cli: 'gh' | 'forge';
+}
+
+/**
+ * Parse owner and repo from a git remote URL.
+ * Handles both HTTPS and SSH forms:
+ *   https://host/owner/repo(.git)
+ *   git@host:owner/repo(.git)
+ */
+export function parseRemoteUrl(remoteUrl: string): { owner: string; repo: string } {
+  // SSH form: git@host:owner/repo(.git)
+  const sshMatch = remoteUrl.match(/^git@[^:]+:([^/]+)\/(.+?)(?:\.git)?$/);
+  if (sshMatch) {
+    return { owner: sshMatch[1]!, repo: sshMatch[2]! };
+  }
+  // HTTPS form: https://host/owner/repo(.git)
+  const httpsMatch = remoteUrl.match(/^https?:\/\/[^/]+\/([^/]+)\/(.+?)(?:\.git)?$/);
+  if (httpsMatch) {
+    return { owner: httpsMatch[1]!, repo: httpsMatch[2]! };
+  }
+  throw new Error(`Cannot parse owner/repo from remote URL: ${remoteUrl}`);
 }
 
 /**
@@ -59,9 +81,27 @@ export async function resolveForgeProvider(
     };
   }
 
-  // Forgejo path — provider is wired in Task 7.
+  // Forgejo path — resolve owner/repo from the project's git origin remote.
   if (connection.type === 'forgejo') {
-    throw new Error('Forgejo provider not yet wired — added in a later task');
+    const { stdout } = await runCommand(
+      'git',
+      ['remote', 'get-url', 'origin'],
+      { cwd: project.repo_folder_path },
+    );
+    const { owner, repo } = parseRemoteUrl(stdout.trim());
+    const token = getForgeToken(userId, connection.id);
+    return {
+      provider: forgejoProvider,
+      ctx: {
+        type: 'forgejo',
+        baseUrl: connection.base_url,
+        owner,
+        repo,
+        token,
+        worktreePath,
+      },
+      cli: 'forge',
+    };
   }
 
   throw new Error(`Unknown forge connection type: ${(connection as { type: string }).type}`);
