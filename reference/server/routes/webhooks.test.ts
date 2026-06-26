@@ -12,6 +12,10 @@ const {
   mockTriggerPrAgent,
   mockTriggerPrAgentFromReview,
   mockRunCommand,
+  mockListEnabled,
+  mockGetConnectionToken,
+  mockGetPRBranch,
+  mockGetReviewComments,
 } = vi.hoisted(() => ({
   mockValidateSignature: vi.fn(),
   mockValidateForgejoSignature: vi.fn(),
@@ -22,6 +26,10 @@ const {
   mockTriggerPrAgent: vi.fn(),
   mockTriggerPrAgentFromReview: vi.fn(),
   mockRunCommand: vi.fn(),
+  mockListEnabled: vi.fn(),
+  mockGetConnectionToken: vi.fn(),
+  mockGetPRBranch: vi.fn(),
+  mockGetReviewComments: vi.fn(),
 }));
 
 vi.mock('../services/webhookService.js', () => ({
@@ -37,6 +45,23 @@ vi.mock('../services/webhookService.js', () => ({
 
 vi.mock('../services/shell.js', () => ({
   runCommand: mockRunCommand,
+}));
+
+vi.mock('../database/db.js', () => ({
+  forgeConnectionsDb: {
+    listEnabled: mockListEnabled,
+  },
+}));
+
+vi.mock('../services/connectionCredentials.js', () => ({
+  getConnectionToken: mockGetConnectionToken,
+}));
+
+vi.mock('../services/forge/forgejoProvider.js', () => ({
+  forgejoProvider: {
+    getPRBranch: mockGetPRBranch,
+    getReviewComments: mockGetReviewComments,
+  },
 }));
 
 import webhooksRoutes from './webhooks.js';
@@ -70,6 +95,12 @@ describe('Webhooks Routes', () => {
       conversationId: 200,
       agentRunId: 2,
     });
+
+    // Default: no Forgejo connections, no bot token
+    vi.mocked(mockListEnabled).mockReturnValue([]);
+    vi.mocked(mockGetConnectionToken).mockReturnValue(null);
+    vi.mocked(mockGetPRBranch).mockResolvedValue('task/123-feature');
+    vi.mocked(mockGetReviewComments).mockResolvedValue([]);
 
     // Default: `gh pr view` returns a task branch, `gh api` returns [].
     withDispatch(async (_cmd, args) => {
@@ -400,7 +431,7 @@ describe('Webhooks Routes', () => {
       expect(response.body.reason).toBe('branch not in task format');
     });
 
-    it('ignores a Forgejo comment event (branch lookup not yet supported)', async () => {
+    it('ignores a Forgejo comment event when no bot token is configured', async () => {
       vi.mocked(mockNormalizeWebhookEvent).mockReturnValue({
         kind: 'comment',
         prNumber: 4,
@@ -408,6 +439,7 @@ describe('Webhooks Routes', () => {
         bodyText: '@bottega fix it',
       });
       vi.mocked(mockHasTriggerMention).mockReturnValue(true);
+      // No matching connection / no bot token (defaults from beforeEach)
 
       const response = await makeForgejoRequest(
         { action: 'created' },
@@ -417,6 +449,141 @@ describe('Webhooks Routes', () => {
       expect(response.status).toBe(200);
       expect(response.body.status).toBe('ignored');
       expect(response.body.reason).toBe('could not determine branch');
+    });
+
+    it('triggers Forgejo comment via bot token when connection matches', async () => {
+      vi.mocked(mockNormalizeWebhookEvent).mockReturnValue({
+        kind: 'comment',
+        prNumber: 4,
+        prUrl: 'https://forgejo.example.com/org/repo/pulls/4',
+        bodyText: '@bottega fix it',
+      });
+      vi.mocked(mockHasTriggerMention).mockReturnValue(true);
+
+      // Set up a matching Forgejo connection with a bot token
+      vi.mocked(mockListEnabled).mockReturnValue([
+        {
+          id: 10,
+          type: 'forgejo' as const,
+          name: 'My Forgejo',
+          base_url: 'https://forgejo.example.com',
+          enabled: 1 as const,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.mocked(mockGetConnectionToken).mockReturnValue('bot-secret-token');
+      vi.mocked(mockGetPRBranch).mockResolvedValue('task/123-forgejo-feature');
+
+      const response = await makeForgejoRequest(
+        {
+          action: 'created',
+          comment: { body: '@bottega fix it', user: { login: 'alice' } },
+          repository: {
+            html_url: 'https://forgejo.example.com/org/repo',
+            full_name: 'org/repo',
+          },
+        },
+        { 'X-Gitea-Event': 'issue_comment' },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('triggered');
+      expect(response.body.taskId).toBe(123);
+      expect(response.body.conversationId).toBe(100);
+
+      // getPRBranch was called with the Forgejo context
+      expect(mockGetPRBranch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'forgejo',
+          baseUrl: 'https://forgejo.example.com',
+          owner: 'org',
+          repo: 'repo',
+        }),
+        expect.objectContaining({ prNumber: 4, repoFullName: 'org/repo' }),
+      );
+
+      // triggerPrAgentFromComment called — no token in call args
+      expect(mockTriggerPrAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 123,
+          commentAuthor: 'alice',
+        }),
+      );
+      // The bot token must not appear anywhere in the response
+      expect(JSON.stringify(response.body)).not.toContain('bot-secret-token');
+    });
+
+    it('ignores Forgejo comment when getPRBranch returns null', async () => {
+      vi.mocked(mockNormalizeWebhookEvent).mockReturnValue({
+        kind: 'comment',
+        prNumber: 4,
+        bodyText: '@bottega fix it',
+      });
+      vi.mocked(mockHasTriggerMention).mockReturnValue(true);
+      vi.mocked(mockListEnabled).mockReturnValue([
+        {
+          id: 10,
+          type: 'forgejo' as const,
+          name: 'My Forgejo',
+          base_url: 'https://forgejo.example.com',
+          enabled: 1 as const,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.mocked(mockGetConnectionToken).mockReturnValue('bot-token');
+      vi.mocked(mockGetPRBranch).mockResolvedValue(null);
+
+      const response = await makeForgejoRequest(
+        {
+          action: 'created',
+          repository: {
+            html_url: 'https://forgejo.example.com/org/repo',
+            full_name: 'org/repo',
+          },
+        },
+        { 'X-Gitea-Event': 'issue_comment' },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('ignored');
+      expect(response.body.reason).toBe('could not determine branch');
+    });
+
+    it('ignores Forgejo comment when the resolved branch is not a task branch', async () => {
+      vi.mocked(mockNormalizeWebhookEvent).mockReturnValue({
+        kind: 'comment',
+        prNumber: 4,
+        bodyText: '@bottega fix it',
+      });
+      vi.mocked(mockHasTriggerMention).mockReturnValue(true);
+      vi.mocked(mockListEnabled).mockReturnValue([
+        {
+          id: 10,
+          type: 'forgejo' as const,
+          name: 'My Forgejo',
+          base_url: 'https://forgejo.example.com',
+          enabled: 1 as const,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.mocked(mockGetConnectionToken).mockReturnValue('bot-token');
+      vi.mocked(mockGetPRBranch).mockResolvedValue('main');
+      vi.mocked(mockParseTaskId).mockReturnValue(null);
+
+      const response = await makeForgejoRequest(
+        {
+          action: 'created',
+          repository: {
+            html_url: 'https://forgejo.example.com/org/repo',
+            full_name: 'org/repo',
+          },
+        },
+        { 'X-Gitea-Event': 'issue_comment' },
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('ignored');
+      expect(response.body.reason).toBe('branch not in task format');
     });
 
     it('returns 500 for unexpected errors from Forgejo review trigger', async () => {

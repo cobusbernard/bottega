@@ -20,3 +20,9 @@ export const SetForgeTokenSchema = z.object({
   token: z.string().min(1, 'Token must not be empty'),
 });
 export type SetForgeToken = z.infer<typeof SetForgeTokenSchema>;
+
+// Per-connection bot token (admin-set; write-only)
+export const SetConnectionTokenSchema = z.object({
+  token: z.string().min(1, 'Token must not be empty'),
+});
+export type SetConnectionToken = z.infer<typeof SetConnectionTokenSchema>;

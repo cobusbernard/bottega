@@ -17,7 +17,15 @@ vi.mock('../database/db.js', () => ({
   },
 }));
 
+// Mock connectionCredentials — tokens are write-only and must never be returned
+vi.mock('../services/connectionCredentials.js', () => ({
+  setConnectionToken: vi.fn(),
+  getConnectionToken: vi.fn(),
+  deleteConnectionToken: vi.fn(),
+}));
+
 import { forgeConnectionsDb, userDb } from '../database/db.js';
+import { setConnectionToken, getConnectionToken, deleteConnectionToken } from '../services/connectionCredentials.js';
 
 const adminUser = { id: 1, username: 'admin', is_admin: 1 };
 const nonAdminUser = { id: 2, username: 'user', is_admin: 0 };
@@ -60,6 +68,8 @@ const mockConnection = {
 describe('Forge Connections Routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: no bot token configured
+    vi.mocked(getConnectionToken).mockReturnValue(null);
   });
 
   describe('admin access', () => {
@@ -71,15 +81,29 @@ describe('Forge Connections Routes', () => {
     });
 
     describe('GET /api/admin/forge-connections', () => {
-      it('returns a list of connections', async () => {
+      it('returns a list of connections with botTokenConfigured field', async () => {
         vi.mocked(forgeConnectionsDb.list).mockReturnValue([mockConnection]);
+        vi.mocked(getConnectionToken).mockReturnValue(null);
 
         const res = await request(app).get('/api/admin/forge-connections');
 
         expect(res.status).toBe(200);
         expect(res.body).toHaveLength(1);
         expect(res.body[0].name).toBe('My GitHub');
+        expect(res.body[0].botTokenConfigured).toBe(false);
         expect(forgeConnectionsDb.list).toHaveBeenCalled();
+      });
+
+      it('reports botTokenConfigured:true when a token is stored', async () => {
+        vi.mocked(forgeConnectionsDb.list).mockReturnValue([mockConnection]);
+        vi.mocked(getConnectionToken).mockReturnValue('secret-token');
+
+        const res = await request(app).get('/api/admin/forge-connections');
+
+        expect(res.status).toBe(200);
+        expect(res.body[0].botTokenConfigured).toBe(true);
+        // Token value must NEVER appear in response
+        expect(JSON.stringify(res.body)).not.toContain('secret-token');
       });
 
       it('returns an empty array when no connections exist', async () => {
@@ -103,6 +127,7 @@ describe('Forge Connections Routes', () => {
         expect(res.status).toBe(201);
         expect(res.body.name).toBe('My GitHub');
         expect(res.body.type).toBe('github');
+        expect(res.body.botTokenConfigured).toBe(false);
         expect(forgeConnectionsDb.create).toHaveBeenCalledWith({
           type: 'github',
           name: 'My GitHub',
@@ -164,6 +189,74 @@ describe('Forge Connections Routes', () => {
       });
     });
 
+    describe('PUT /api/admin/forge-connections/:id/token', () => {
+      it('stores the token and responds with ok:true — no token in response', async () => {
+        vi.mocked(forgeConnectionsDb.getById).mockReturnValue(mockConnection);
+
+        const res = await request(app)
+          .put('/api/admin/forge-connections/1/token')
+          .send({ token: 'my-secret-token' });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ ok: true });
+        // Token must never be echoed back
+        expect(JSON.stringify(res.body)).not.toContain('my-secret-token');
+        expect(setConnectionToken).toHaveBeenCalledWith(1, 'my-secret-token');
+      });
+
+      it('returns 404 when connection does not exist', async () => {
+        vi.mocked(forgeConnectionsDb.getById).mockReturnValue(undefined);
+
+        const res = await request(app)
+          .put('/api/admin/forge-connections/999/token')
+          .send({ token: 'tok' });
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toContain('not found');
+        expect(setConnectionToken).not.toHaveBeenCalled();
+      });
+
+      it('returns 400 when token is empty string', async () => {
+        const res = await request(app)
+          .put('/api/admin/forge-connections/1/token')
+          .send({ token: '' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Validation failed');
+      });
+
+      it('returns 400 when token field is missing', async () => {
+        const res = await request(app)
+          .put('/api/admin/forge-connections/1/token')
+          .send({});
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Validation failed');
+      });
+    });
+
+    describe('DELETE /api/admin/forge-connections/:id/token', () => {
+      it('deletes the token and responds with ok:true', async () => {
+        vi.mocked(forgeConnectionsDb.getById).mockReturnValue(mockConnection);
+
+        const res = await request(app).delete('/api/admin/forge-connections/1/token');
+
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ ok: true });
+        expect(deleteConnectionToken).toHaveBeenCalledWith(1);
+      });
+
+      it('returns 404 when connection does not exist', async () => {
+        vi.mocked(forgeConnectionsDb.getById).mockReturnValue(undefined);
+
+        const res = await request(app).delete('/api/admin/forge-connections/999/token');
+
+        expect(res.status).toBe(404);
+        expect(res.body.error).toContain('not found');
+        expect(deleteConnectionToken).not.toHaveBeenCalled();
+      });
+    });
+
     describe('DELETE /api/admin/forge-connections/:id', () => {
       it('removes a connection', async () => {
         vi.mocked(forgeConnectionsDb.getById).mockReturnValue(mockConnection);
@@ -211,6 +304,18 @@ describe('Forge Connections Routes', () => {
       const res = await request(app)
         .patch('/api/admin/forge-connections/1')
         .send({ enabled: true });
+      expect(res.status).toBe(403);
+    });
+
+    it('PUT token returns 403', async () => {
+      const res = await request(app)
+        .put('/api/admin/forge-connections/1/token')
+        .send({ token: 'tok' });
+      expect(res.status).toBe(403);
+    });
+
+    it('DELETE token returns 403', async () => {
+      const res = await request(app).delete('/api/admin/forge-connections/1/token');
       expect(res.status).toBe(403);
     });
 

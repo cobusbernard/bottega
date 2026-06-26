@@ -181,6 +181,12 @@ export interface ForgeConnectionRow {
   created_at: string;
 }
 
+// Admin list response — extends the DB row with a computed field that
+// indicates whether a bot token is configured (NEVER returns the value).
+export interface ForgeConnectionResponse extends ForgeConnectionRow {
+  botTokenConfigured: boolean;
+}
+
 // ---- app_settings ---------------------------------------------------------
 
 export interface AppSettingRow {

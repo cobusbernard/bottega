@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ForgeConnections from './ForgeConnections';
 import { api } from '../../utils/api';
 import { mockTypedResponse } from '../../test/typedResponse';
-import type { ForgeConnectionRow } from '../../../shared/types/db';
+import type { ForgeConnectionResponse } from '../../../shared/types/db';
 
 vi.mock('../../utils/api', () => ({
   api: {
@@ -12,13 +12,15 @@ vi.mock('../../utils/api', () => ({
       createForgeConnection: vi.fn(),
       setForgeConnectionEnabled: vi.fn(),
       deleteForgeConnection: vi.fn(),
+      setConnectionBotToken: vi.fn(),
+      deleteConnectionBotToken: vi.fn(),
     },
   },
 }));
 
 const ok = <T,>(body: T) => mockTypedResponse(body);
 
-const mockConnections: ForgeConnectionRow[] = [
+const mockConnections: ForgeConnectionResponse[] = [
   {
     id: 1,
     type: 'github',
@@ -26,6 +28,7 @@ const mockConnections: ForgeConnectionRow[] = [
     base_url: 'https://github.com',
     enabled: 1,
     created_at: '2026-01-01T00:00:00Z',
+    botTokenConfigured: false,
   },
   {
     id: 2,
@@ -34,6 +37,7 @@ const mockConnections: ForgeConnectionRow[] = [
     base_url: 'https://forgejo.example.com',
     enabled: 0,
     created_at: '2026-01-02T00:00:00Z',
+    botTokenConfigured: true,
   },
 ];
 
@@ -52,6 +56,16 @@ describe('ForgeConnections', () => {
     expect(screen.getByText('https://github.com')).toBeInTheDocument();
     expect(screen.getByText('https://forgejo.example.com')).toBeInTheDocument();
     expect(api.admin.listForgeConnections).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows "configured"/"not configured" bot token status per connection', async () => {
+    vi.mocked(api.admin.listForgeConnections).mockResolvedValue(ok(mockConnections));
+
+    render(<ForgeConnections />);
+
+    await screen.findByText('My GitHub');
+    expect(screen.getByText('not configured')).toBeInTheDocument();
+    expect(screen.getByText('configured')).toBeInTheDocument();
   });
 
   it('shows empty state when no connections', async () => {
@@ -75,13 +89,14 @@ describe('ForgeConnections', () => {
   });
 
   it('submits the add form and reloads the list', async () => {
-    const newConn: ForgeConnectionRow = {
+    const newConn: ForgeConnectionResponse = {
       id: 3,
       type: 'github',
       name: 'New Forge',
       base_url: 'https://github.com',
       enabled: 1,
       created_at: '2026-01-03T00:00:00Z',
+      botTokenConfigured: false,
     };
 
     vi.mocked(api.admin.listForgeConnections)
@@ -106,6 +121,53 @@ describe('ForgeConnections', () => {
       'https://github.com'
     ));
     await screen.findByText('New Forge');
+  });
+
+  it('shows bot token form when the key icon is clicked', async () => {
+    vi.mocked(api.admin.listForgeConnections).mockResolvedValue(ok(mockConnections));
+
+    render(<ForgeConnections />);
+
+    await screen.findByText('My GitHub');
+    const keyButtons = screen.getAllByRole('button', { name: /manage bot token/i });
+    fireEvent.click(keyButtons[0]!);
+
+    expect(screen.getByPlaceholderText(/paste token here/i)).toBeInTheDocument();
+  });
+
+  it('saves a bot token via setConnectionBotToken and reloads', async () => {
+    const updatedConn: ForgeConnectionResponse = {
+      id: mockConnections[0]!.id,
+      type: mockConnections[0]!.type,
+      name: mockConnections[0]!.name,
+      base_url: mockConnections[0]!.base_url,
+      enabled: mockConnections[0]!.enabled,
+      created_at: mockConnections[0]!.created_at,
+      botTokenConfigured: true,
+    };
+    vi.mocked(api.admin.listForgeConnections)
+      .mockResolvedValueOnce(ok(mockConnections))
+      .mockResolvedValueOnce(ok([updatedConn, mockConnections[1]!]));
+    vi.mocked(api.admin.setConnectionBotToken).mockResolvedValue(ok({ ok: true }));
+
+    render(<ForgeConnections />);
+
+    await screen.findByText('My GitHub');
+    const keyButtons = screen.getAllByRole('button', { name: /manage bot token/i });
+    fireEvent.click(keyButtons[0]!);
+
+    fireEvent.change(screen.getByPlaceholderText(/paste token here/i), {
+      target: { value: 'glpat-abc123' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(api.admin.setConnectionBotToken).toHaveBeenCalledWith(1, 'glpat-abc123'),
+    );
+    // Form should collapse and list reload
+    await waitFor(() =>
+      expect(api.admin.listForgeConnections).toHaveBeenCalledTimes(2),
+    );
   });
 
   it('shows an error message on fetch failure', async () => {

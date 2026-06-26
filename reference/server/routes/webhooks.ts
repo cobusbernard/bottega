@@ -1,9 +1,14 @@
 // Webhook Routes
 //
-// Handles incoming webhooks from external services like GitHub.
+// Handles incoming webhooks from external services like GitHub and Forgejo.
 // GitHub webhooks trigger PR agent runs when the configured @-trigger
 // (e.g. @bottega) is mentioned in PR comments. The trigger string is
 // stored in app_settings.github_pr_trigger and editable from the UI.
+//
+// Forgejo webhooks work the same way, but issue_comment payloads lack the
+// PR branch. A per-connection bot token (set by an admin via
+// PUT /api/admin/forge-connections/:id/token) is used to call the Forgejo
+// API and resolve the branch.
 
 import express, { type Request, type Response } from 'express';
 import {
@@ -22,6 +27,11 @@ import {
   ValidationError,
 } from '../services/validators.js';
 import { githubProvider } from '../services/forge/githubProvider.js';
+import { forgejoProvider } from '../services/forge/forgejoProvider.js';
+import { forgeConnectionsDb } from '../database/db.js';
+import { getConnectionToken } from '../services/connectionCredentials.js';
+import type { ForgeConnectionRow } from '../../shared/types/db.js';
+import type { ForgeContext } from '../services/forge/types.js';
 
 const router = express.Router();
 
@@ -71,6 +81,37 @@ async function fetchReviewComments(
   }
   const ctx = { type: 'github' as const, baseUrl: 'https://github.com', owner: '', repo: '', token: null, worktreePath: '' };
   return githubProvider.getReviewComments(ctx, { prNumber, reviewId, repoFullName });
+}
+
+/**
+ * Find a Forgejo forge_connection whose base_url host matches the given
+ * repository URL host, and return the stored bot token. Returns null if no
+ * match or no token is configured.
+ */
+function findForgejoConnectionToken(
+  repoHtmlUrl: string | undefined,
+): { connection: ForgeConnectionRow; token: string } | null {
+  if (!repoHtmlUrl) return null;
+
+  let repoHost: string;
+  try {
+    repoHost = new URL(repoHtmlUrl).host;
+  } catch {
+    return null;
+  }
+
+  const connections = forgeConnectionsDb.listEnabled();
+  for (const conn of connections) {
+    if (conn.type !== 'forgejo') continue;
+    try {
+      if (new URL(conn.base_url).host !== repoHost) continue;
+    } catch {
+      continue;
+    }
+    const token = getConnectionToken(conn.id);
+    if (token) return { connection: conn, token };
+  }
+  return null;
 }
 
 router.post(
@@ -123,13 +164,94 @@ router.post(
           return res.status(200).json({ status: 'ignored', reason: 'could not determine PR' });
         }
 
-        // Forgejo issue_comment payloads do not include the PR branch — a separate
-        // Forgejo API call is required. Branch lookup is pending a Forgejo forge-provider
-        // implementation; for now we cannot resolve a taskId.
-        console.log('[Webhook] Forgejo issue_comment: branch lookup not yet supported; ignoring');
-        return res
-          .status(200)
-          .json({ status: 'ignored', reason: 'could not determine branch' });
+        // Resolve the PR branch via the Forgejo API using a per-connection bot token.
+        const repoHtmlUrl = (forgejoPayload.repository as { html_url?: string } | undefined)?.html_url;
+        const repoFullName = (forgejoPayload.repository as { full_name?: string } | undefined)?.full_name;
+        const match = findForgejoConnectionToken(repoHtmlUrl);
+
+        if (!match || !repoFullName) {
+          console.log('[Webhook] Forgejo issue_comment: no connection bot token configured; ignoring');
+          return res
+            .status(200)
+            .json({ status: 'ignored', reason: 'could not determine branch' });
+        }
+
+        const [owner = '', repo = ''] = repoFullName.split('/');
+        const ctx: ForgeContext = {
+          type: 'forgejo',
+          baseUrl: match.connection.base_url,
+          owner,
+          repo,
+          token: match.token,
+          worktreePath: '',
+        };
+
+        let branchName: string | null;
+        try {
+          branchName = await forgejoProvider.getPRBranch(ctx, {
+            prNumber: normalized.prNumber,
+            repoFullName,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error('[Webhook] Forgejo getPRBranch failed:', message);
+          return res.status(200).json({ status: 'ignored', reason: 'could not determine branch' });
+        }
+
+        if (!branchName) {
+          console.log('[Webhook] Forgejo issue_comment: could not determine branch from API');
+          return res.status(200).json({ status: 'ignored', reason: 'could not determine branch' });
+        }
+
+        const taskId = parseTaskIdFromBranch(branchName);
+        if (!taskId) {
+          console.log(`[Webhook] Forgejo branch ${branchName} does not match task pattern`);
+          return res
+            .status(200)
+            .json({ status: 'ignored', reason: 'branch not in task format' });
+        }
+
+        const commentPayload = forgejoPayload.comment as
+          | { body?: string; user?: { login?: string } }
+          | undefined;
+        const commentBody = normalized.bodyText || commentPayload?.body || '';
+        const commentAuthor = commentPayload?.user?.login || 'unknown';
+
+        try {
+          const result = await triggerPrAgentFromComment({
+            taskId,
+            commentBody,
+            commentAuthor,
+            prUrl: normalized.prUrl,
+            fileContext: null,
+            broadcastToConversationSubscribers:
+              req.app.locals.broadcastToConversationSubscribers,
+            broadcastToTaskSubscribers: req.app.locals.broadcastToTaskSubscribers,
+          });
+
+          console.log(
+            `[Webhook] Successfully triggered PR agent for task ${taskId} from Forgejo comment`,
+          );
+          return res.status(200).json({
+            status: 'triggered',
+            taskId,
+            conversationId: result.conversationId,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error('[Webhook] Failed to trigger PR agent from Forgejo comment:', message);
+
+          if (
+            message.includes('not found') ||
+            message.includes('already completed') ||
+            message.includes('No worktree') ||
+            message.includes('already running')
+          ) {
+            return res.status(200).json({ status: 'ignored', reason: message });
+          }
+
+          return res.status(500).json({ error: 'Failed to trigger agent', message });
+        }
       }
 
       if (normalized.kind === 'review') {
@@ -160,18 +282,57 @@ router.post(
         }
 
         const reviewPayload = forgejoPayload.review as
-          | { user?: { login?: string } }
+          | { id?: number; user?: { login?: string } }
           | undefined;
         const reviewAuthor = reviewPayload?.user?.login || 'unknown';
+        const reviewId = reviewPayload?.id;
+
+        // Attempt to fetch inline review comments via the bot token.
+        let reviewComments: GitHubReviewComment[] = [];
+        const repoHtmlUrl = (forgejoPayload.repository as { html_url?: string } | undefined)?.html_url;
+        const repoFullName = (forgejoPayload.repository as { full_name?: string } | undefined)?.full_name;
+        const match = findForgejoConnectionToken(repoHtmlUrl);
+
+        if (match && repoFullName && reviewId && normalized.prNumber) {
+          const [owner = '', repo = ''] = repoFullName.split('/');
+          const ctx: ForgeContext = {
+            type: 'forgejo',
+            baseUrl: match.connection.base_url,
+            owner,
+            repo,
+            token: match.token,
+            worktreePath: '',
+          };
+          try {
+            reviewComments = await forgejoProvider.getReviewComments(ctx, {
+              prNumber: normalized.prNumber,
+              reviewId,
+              repoFullName,
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn('[Webhook] Forgejo getReviewComments failed (continuing with empty):', message);
+          }
+        }
 
         try {
           const result = await triggerPrAgentFromReview({
             taskId,
             reviewBody: reviewBody || null,
             reviewAuthor,
-            // Forgejo review inline comments require a separate API call; pass empty
-            // array for now (pending Forgejo forge-provider implementation).
-            comments: [],
+            comments: reviewComments.map((c) => ({
+              commentBody: c.body,
+              commentAuthor: c.user?.login || 'unknown',
+              fileContext: c.path
+                ? {
+                    path: c.path,
+                    line: c.line || null,
+                    startLine: c.start_line || null,
+                    diffHunk: c.diff_hunk || null,
+                    side: c.side || null,
+                  }
+                : null,
+            })),
             prUrl: normalized.prUrl,
             broadcastToConversationSubscribers:
               req.app.locals.broadcastToConversationSubscribers,

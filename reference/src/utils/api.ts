@@ -108,7 +108,7 @@ import type {
   AddProjectMemberResponse,
   RemoveProjectMemberResponse,
 } from '../../shared/api/admin';
-import type { ForgeConnectionRow } from '../../shared/types/db';
+import type { ForgeConnectionRow, ForgeConnectionResponse } from '../../shared/types/db';
 import type {
   ListPromptsResponse,
   GetPromptResponse,
@@ -731,14 +731,14 @@ export const api = {
         { method: 'DELETE' }
       ),
     // Forge connections management
-    listForgeConnections: (): TypedFetch<ForgeConnectionRow[]> =>
-      authenticatedFetch<ForgeConnectionRow[]>('/api/admin/forge-connections'),
+    listForgeConnections: (): TypedFetch<ForgeConnectionResponse[]> =>
+      authenticatedFetch<ForgeConnectionResponse[]>('/api/admin/forge-connections'),
     createForgeConnection: (
       type: 'github' | 'forgejo',
       name: string,
       base_url: string
-    ): TypedFetch<ForgeConnectionRow> =>
-      authenticatedFetch<ForgeConnectionRow>('/api/admin/forge-connections', {
+    ): TypedFetch<ForgeConnectionResponse> =>
+      authenticatedFetch<ForgeConnectionResponse>('/api/admin/forge-connections', {
         method: 'POST',
         body: JSON.stringify({ type, name, base_url }),
       }),
@@ -752,6 +752,16 @@ export const api = {
       }),
     deleteForgeConnection: (id: number): TypedFetch<{ success: true }> =>
       authenticatedFetch<{ success: true }>(`/api/admin/forge-connections/${id}`, {
+        method: 'DELETE',
+      }),
+    // Bot token — write-only; responses never contain the stored value
+    setConnectionBotToken: (id: number, token: string): TypedFetch<{ ok: true }> =>
+      authenticatedFetch<{ ok: true }>(`/api/admin/forge-connections/${id}/token`, {
+        method: 'PUT',
+        body: JSON.stringify({ token }),
+      }),
+    deleteConnectionBotToken: (id: number): TypedFetch<{ ok: true }> =>
+      authenticatedFetch<{ ok: true }>(`/api/admin/forge-connections/${id}/token`, {
         method: 'DELETE',
       }),
   },
