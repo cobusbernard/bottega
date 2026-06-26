@@ -252,24 +252,34 @@ describe('generatePrAgentReviewMessage (batched review)', () => {
 describe('forge-aware CLI rendering', () => {
   const taskDocPath = '/repo/.bottega/tasks/task-1.md';
   const taskId = 1;
+  // The tsx invocation path rendered by agentRunner for Forgejo projects
+  const forgeTsx = 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts';
+  const forgeArgs = '--user 5 --task 1';
 
-  it('renders gh pr create for GitHub (default)', async () => {
+  it('renders gh pr create for GitHub (default) — no forge.ts, no --user', async () => {
     const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');
     expect(msg).toContain('gh pr create');
+    expect(msg).not.toContain('forge.ts');
+    expect(msg).not.toContain('--user');
   });
 
-  it('renders forge pr create for Forgejo', async () => {
-    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
-    expect(msg).toContain('forge pr create');
+  it('renders tsx forge.ts invocation with --user/--task for Forgejo pr create', async () => {
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, forgeTsx, forgeArgs);
+    expect(msg).toContain('forge.ts');
+    expect(msg).toContain('--user');
+    expect(msg).toContain('pr create');
     expect(msg).not.toContain('gh pr create');
   });
 
-  it('renders gh pr checks for GitHub and forge pr checks for Forgejo', async () => {
+  it('renders gh pr checks for GitHub and tsx forge.ts pr checks for Forgejo', async () => {
     const ghMsg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');
     expect(ghMsg).toContain('gh pr checks');
+    expect(ghMsg).not.toContain('forge.ts');
 
-    const fgMsg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
-    expect(fgMsg).toContain('forge pr checks');
+    const fgMsg = await generatePrAgentMessage(taskDocPath, taskId, null, forgeTsx, forgeArgs);
+    expect(fgMsg).toContain('forge.ts');
+    expect(fgMsg).toContain('pr checks');
+    expect(fgMsg).toContain('--user');
     expect(fgMsg).not.toContain('gh pr checks');
   });
 
@@ -279,24 +289,28 @@ describe('forge-aware CLI rendering', () => {
   });
 
   it('Forgejo path does NOT include gh run view --log-failed', async () => {
-    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, forgeTsx, forgeArgs);
     expect(msg).not.toContain('gh run view');
-    expect(msg).toContain("open the failed check's link shown by `forge pr checks`");
+    expect(msg).toContain("open the failed check's link shown by the pr checks output above");
   });
 
-  it('yolo: renders forge pr create for Forgejo', async () => {
-    const msg = await generateYoloMessage(taskDocPath, taskId, null, 'forge');
-    expect(msg).toContain('forge pr create');
+  it('yolo: renders tsx forge.ts invocation with --user/--task for Forgejo pr create', async () => {
+    const msg = await generateYoloMessage(taskDocPath, taskId, null, forgeTsx, forgeArgs);
+    expect(msg).toContain('forge.ts');
+    expect(msg).toContain('--user');
+    expect(msg).toContain('pr create');
     expect(msg).not.toContain('gh pr create');
   });
 
-  it('pr-feedback: renders forge pr checks for Forgejo', async () => {
+  it('pr-feedback: renders tsx forge.ts pr checks with --user for Forgejo', async () => {
     const prUrl = 'https://git.example.com/org/repo/pulls/1';
     const msg = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, {
       commentBody: 'fix it',
       commentAuthor: 'alice',
-    }, 'forge');
-    expect(msg).toContain('forge pr checks');
+    }, forgeTsx, forgeArgs);
+    expect(msg).toContain('forge.ts');
+    expect(msg).toContain('pr checks');
+    expect(msg).toContain('--user');
     expect(msg).not.toContain('gh pr checks');
     expect(msg).not.toContain('gh run view');
   });

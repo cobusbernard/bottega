@@ -103,26 +103,40 @@ export async function startAgentRun(
       // getPullRequestStatus internally derives the worktree path from repo + taskId
       const prStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
       const prUrl = prStatus.exists ? prStatus.url ?? null : null;
-      const forgeCli = resolveForgeCli(taskId);
+      const forgeCliRaw = resolveForgeCli(taskId);
+      // For Forgejo: render a tsx-invocable path with --user/--task injected so the
+      // agent can run it directly. For GitHub keep the plain 'gh' binary unchanged.
+      const forgeCli = forgeCliRaw === 'forge'
+        ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
+        : 'gh';
+      const forgeArgs = forgeCliRaw === 'forge'
+        ? `--user ${effectiveUserId ?? 0} --task ${taskId}`
+        : '';
 
       // Use review-specific prompt if triggered by webhook with review comments
       // Use comment-specific prompt if triggered by webhook with single comment context
       const webhookCtx = options.webhookContext;
       if (webhookCtx?.comments) {
         // Shape is validated by the webhook route (commit 5: zod boundary).
-        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli);
+        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli, forgeArgs);
       } else if (webhookCtx) {
-        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli);
+        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli, forgeArgs);
       } else {
-        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl, forgeCli);
+        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl, forgeCli, forgeArgs);
       }
       break;
     }
     case 'yolo': {
       const yoloPrStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
       const yoloPrUrl = yoloPrStatus.exists ? yoloPrStatus.url ?? null : null;
-      const yoloForgeCli = resolveForgeCli(taskId);
-      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl, yoloForgeCli);
+      const yoloForgeCliRaw = resolveForgeCli(taskId);
+      const yoloForgeCli = yoloForgeCliRaw === 'forge'
+        ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
+        : 'gh';
+      const yoloForgeArgs = yoloForgeCliRaw === 'forge'
+        ? `--user ${effectiveUserId ?? 0} --task ${taskId}`
+        : '';
+      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl, yoloForgeCli, yoloForgeArgs);
       break;
     }
     default:

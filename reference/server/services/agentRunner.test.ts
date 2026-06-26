@@ -42,13 +42,22 @@ vi.mock('../constants/agentPrompts.js', () => ({
   generatePlanificationMessage: vi.fn().mockReturnValue('planification message'),
   generateImplementationMessage: vi.fn().mockReturnValue('implementation message'),
   generateReviewMessage: vi.fn().mockReturnValue('review message'),
-  generateRefinementMessage: vi.fn().mockReturnValue('refinement message')
+  generateRefinementMessage: vi.fn().mockReturnValue('refinement message'),
+  generatePrAgentMessage: vi.fn().mockReturnValue('pr message'),
+  generateYoloMessage: vi.fn().mockReturnValue('yolo message'),
+  generatePrAgentCommentMessage: vi.fn().mockReturnValue('pr comment message'),
+  generatePrAgentReviewMessage: vi.fn().mockReturnValue('pr review message'),
 }));
 
 vi.mock('./worktree.js', () => ({
   getWorktreePath: vi.fn(),
   getWorktreeProjectPath: vi.fn(),
-  worktreeExists: vi.fn()
+  worktreeExists: vi.fn(),
+  getPullRequestStatus: vi.fn().mockResolvedValue({ exists: false, url: null }),
+}));
+
+vi.mock('./forge/index.js', () => ({
+  resolveForgeCli: vi.fn().mockReturnValue('gh'),
 }));
 
 vi.mock('./claudeCredentials.js', () => ({
@@ -98,9 +107,12 @@ import {
   generatePlanificationMessage,
   generateImplementationMessage,
   generateReviewMessage,
-  generateRefinementMessage
+  generateRefinementMessage,
+  generatePrAgentMessage,
+  generateYoloMessage,
 } from '../constants/agentPrompts.js';
 import { getWorktreeProjectPath, worktreeExists } from './worktree.js';
+import { resolveForgeCli } from './forge/index.js';
 import { loadAgentModelSettings } from './agentModelSettings.js';
 
 describe('agentRunner', () => {
@@ -438,6 +450,59 @@ describe('agentRunner', () => {
         expect.objectContaining({
           videoConfig: null
         })
+      );
+    });
+  });
+
+  describe('forge CLI selection for PR/YOLO agents', () => {
+    beforeEach(() => {
+      vi.mocked(tasksDb.getWithProject).mockReturnValue(mockTaskWithProject as never);
+      vi.mocked(agentRunsDb.create).mockReturnValue(mockAgentRun as never);
+      vi.mocked(conversationsDb.create).mockReturnValue(mockConversation as never);
+      vi.mocked(agentRunsDb.linkConversation).mockReturnValue({ ...mockAgentRun, conversation_id: 1 } as never);
+      vi.mocked(startConversation).mockResolvedValue({ conversationId: 1, claudeSessionId: 'session-123' });
+      vi.mocked(worktreeExists).mockResolvedValue(false);
+    });
+
+    it('passes tsx forge.ts invocation and --user/--task for Forgejo pr agent', async () => {
+      vi.mocked(resolveForgeCli).mockReturnValue('forge');
+
+      await startAgentRun(1, 'pr', { userId: 5 });
+
+      expect(generatePrAgentMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        null,
+        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        '--user 5 --task 1',
+      );
+    });
+
+    it('passes plain gh and empty forgeArgs for GitHub pr agent (unchanged)', async () => {
+      vi.mocked(resolveForgeCli).mockReturnValue('gh');
+
+      await startAgentRun(1, 'pr', { userId: 5 });
+
+      expect(generatePrAgentMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        null,
+        'gh',
+        '',
+      );
+    });
+
+    it('passes tsx forge.ts invocation and --user/--task for Forgejo yolo agent', async () => {
+      vi.mocked(resolveForgeCli).mockReturnValue('forge');
+
+      await startAgentRun(1, 'yolo', { userId: 5 });
+
+      expect(generateYoloMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        null,
+        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        '--user 5 --task 1',
       );
     });
   });

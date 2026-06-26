@@ -194,6 +194,7 @@ describe('promptRenderer', () => {
         prContextLine: '- No PR exists yet',
         prCreateOrVerifyBlock: '### 1. CREATE BLOCK CONTENT',
         forgeCli: 'gh',
+        forgeArgs: '',
         ciLogHint: '`gh run view <run-id> --log-failed`',
       });
       expect(out).toContain('### 1. CREATE BLOCK CONTENT');
