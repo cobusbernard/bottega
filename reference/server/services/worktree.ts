@@ -3,6 +3,7 @@ import fs from 'fs';
 import { runCommand } from './shell.js';
 import { assertValidBranchName } from './validators.js';
 import { resolveForgeProvider } from './forge/index.js';
+import { parsePrNumberFromUrl } from './forge/prNumber.js';
 
 /**
  * Derive the worktree path for a task based on convention
@@ -399,7 +400,7 @@ export interface PullRequestStatusResult {
  * Get the status of a pull request for a task's worktree branch
  */
 export async function getPullRequestStatus(
-  repoPath: string,
+  _repoPath: string,
   taskId: number,
   userId: number,
 ): Promise<PullRequestStatusResult> {
@@ -425,24 +426,34 @@ export async function mergeAndCleanup(
 
     // For forgejo, mergePR requires the actual PR number; for github it is ignored.
     // Resolve it once before the retry loop from the PR status URL.
-    let prNumber = 0;
+    // parsePrNumberFromUrl handles trailing slashes and query/fragment suffixes
+    // that a naive /\/(\d+)$/ regex would silently misparse as prNumber=0.
+    let prNumber: number | null = null;
     if (branch) {
       try {
         const prStatus = await provider.getPRStatus(ctx, { branch });
         if (prStatus.exists && prStatus.url) {
-          const match = prStatus.url.match(/\/(\d+)$/);
-          if (match) prNumber = parseInt(match[1]!, 10);
+          prNumber = parsePrNumberFromUrl(prStatus.url);
+          if (prNumber === null) {
+            throw new Error(
+              `Cannot determine PR number from URL '${prStatus.url}'. ` +
+              `Open the PR manually and merge it, or check the URL format.`,
+            );
+          }
         }
       } catch {
         // non-fatal: github ignores prNumber; forgejo will surface the error on merge
       }
     }
 
+    // Fall back to 0 for providers (GitHub) that ignore prNumber entirely.
+    const resolvedPrNumber = prNumber ?? 0;
+
     let merged = false;
     let lastMergeError: Error | null = null;
     for (let mergeAttempt = 0; mergeAttempt < 3 && !merged; mergeAttempt++) {
       try {
-        await provider.mergePR(ctx, { prNumber });
+        await provider.mergePR(ctx, { prNumber: resolvedPrNumber });
         merged = true;
       } catch (mergeError) {
         lastMergeError = mergeError instanceof Error ? mergeError : new Error(String(mergeError));

@@ -14,8 +14,12 @@
 
 import { initializeDatabase } from '../server/database/db.js';
 import { resolveForgeProvider } from '../server/services/forge/index.js';
+import { parsePrNumberFromUrl } from '../server/services/forge/prNumber.js';
 import { parseTaskIdFromBranch } from '../server/services/webhookService.js';
 import { getBranchName } from '../server/services/worktree.js';
+
+// Re-export so scripts/forge.test.ts can keep importing from './forge.js'.
+export { parsePrNumberFromUrl } from '../server/services/forge/prNumber.js';
 
 // ANSI color codes
 const colors = {
@@ -55,18 +59,6 @@ export function parseForgeArgv(argv: string[]): {
   }
 
   return { cmd, sub, flags };
-}
-
-/**
- * Extract the PR number from a Forgejo (`/pulls/{n}`) or GitHub (`/pull/{n}`) URL.
- * Anchoring to the `pull(s)` path segment avoids misreading numeric org/namespace
- * segments (e.g. `https://git.example.com/123/repo/pulls/42` → 42, not 123).
- * Pure function; safe to import for unit testing with no side effects.
- */
-export function parsePrNumberFromUrl(url: string | undefined): number | null {
-  if (!url) return null;
-  const match = url.match(/\/(?:pull|pulls)\/(\d+)(?:[/?#]|$)/);
-  return match ? Number(match[1]) : null;
 }
 
 /** Map CIStatus.status to a gh-compatible exit code. */
