@@ -405,7 +405,10 @@ export async function getPullRequestStatus(
   userId: number,
 ): Promise<PullRequestStatusResult> {
   const { provider, ctx } = await resolveForgeProvider(taskId, userId);
-  return provider.getPRStatus(ctx, { branch: null });
+  // Derive the branch from the worktree so Forgejo can match the PR by branch
+  // name (githubProvider ignores this arg and reads cwd instead, so it's harmless there).
+  const branch = await getBranchName(ctx.worktreePath);
+  return provider.getPRStatus(ctx, { branch });
 }
 
 /**
@@ -441,8 +444,12 @@ export async function mergeAndCleanup(
             );
           }
         }
-      } catch {
-        // non-fatal: github ignores prNumber; forgejo will surface the error on merge
+      } catch (prLookupError) {
+        // For providers that require a real PR number (Forgejo), propagate — silently
+        // proceeding with prNumber=0 would hit /pulls/0/merge. GitHub ignores prNumber.
+        if (ctx.type !== 'github') {
+          throw prLookupError;
+        }
       }
     }
 
