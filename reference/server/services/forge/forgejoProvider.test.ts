@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+// Hoist mockRunCommand so the vi.mock factory can reference it.
+const { mockRunCommand } = vi.hoisted(() => ({
+  mockRunCommand: vi.fn().mockResolvedValue({ stdout: '', stderr: '' }),
+}));
+
+vi.mock('../shell.js', () => ({
+  runCommand: mockRunCommand,
+}));
+
 import { forgejoProvider } from './forgejoProvider.js';
 import type { ForgeContext } from './types.js';
 
@@ -9,17 +19,25 @@ const ctx: ForgeContext = {
 const json = (body: unknown, ok = true, status = 200) =>
   Promise.resolve({ ok, status, json: () => Promise.resolve(body), text: () => Promise.resolve('') } as Response);
 
-beforeEach(() => { vi.stubGlobal('fetch', vi.fn()); });
+beforeEach(() => {
+  vi.stubGlobal('fetch', vi.fn());
+  mockRunCommand.mockClear();
+  mockRunCommand.mockResolvedValue({ stdout: '', stderr: '' });
+});
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('forgejoProvider', () => {
-  it('createPR reads default branch then POSTs a pull and returns html_url', async () => {
+  it('createPR pushes branch then reads default branch then POSTs a pull and returns html_url', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockReturnValueOnce(json({ default_branch: 'main' }))                               // GET repo
       .mockReturnValueOnce(json({ html_url: 'https://git.example.com/o/r/pulls/3', number: 3 })); // POST pulls
     const res = await forgejoProvider.createPR(ctx, { branch: 'task/3-x', title: 'T', body: 'B' });
     expect(res).toEqual({ url: 'https://git.example.com/o/r/pulls/3', number: 3 });
+    // verify git push was performed before any fetch calls
+    expect(mockRunCommand).toHaveBeenCalledWith(
+      'git', ['push', '-u', 'origin', 'task/3-x'], { cwd: '/tmp/wt' },
+    );
     const call = fetchMock.mock.calls[1]!;
     const url = call[0] as string;
     const init = call[1] as RequestInit & { body: string; headers: Record<string, string> };

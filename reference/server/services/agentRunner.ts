@@ -101,7 +101,12 @@ export async function startAgentRun(
     case 'pr': {
       // IMPORTANT: Use main repo path (not worktree path) for getPullRequestStatus
       // getPullRequestStatus internally derives the worktree path from repo + taskId
-      const prStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
+      const prStatus = await getPullRequestStatus(
+        taskWithProject.repo_folder_path,
+        taskId,
+        // effectiveUserId is always a number here: task.user_id is always populated from DB
+        effectiveUserId!,
+      );
       const prUrl = prStatus.exists ? prStatus.url ?? null : null;
       const forgeCliRaw = resolveForgeCli(taskId);
       // For Forgejo: render a tsx-invocable path with --user/--task injected so the
@@ -127,7 +132,12 @@ export async function startAgentRun(
       break;
     }
     case 'yolo': {
-      const yoloPrStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
+      const yoloPrStatus = await getPullRequestStatus(
+        taskWithProject.repo_folder_path,
+        taskId,
+        // effectiveUserId is always a number here: task.user_id is always populated from DB
+        effectiveUserId!,
+      );
       const yoloPrUrl = yoloPrStatus.exists ? yoloPrStatus.url ?? null : null;
       const yoloForgeCliRaw = resolveForgeCli(taskId);
       const yoloForgeCli = yoloForgeCliRaw === 'forge'

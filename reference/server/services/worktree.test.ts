@@ -11,6 +11,26 @@ const { mockRunCommand, mockAccess, mockMkdir, mockSymlink, mockExistsSync } = v
   }),
 );
 
+// Mock resolveForgeProvider to return githubProvider with a synthetic GitHub ctx,
+// preserving the existing runCommand assertions (githubProvider uses the same mocked shell).
+vi.mock('./forge/index.js', async () => {
+  const { githubProvider } = await import('./forge/githubProvider.js');
+  return {
+    resolveForgeProvider: vi.fn().mockResolvedValue({
+      provider: githubProvider,
+      ctx: {
+        type: 'github' as const,
+        baseUrl: 'https://github.com',
+        owner: '',
+        repo: '',
+        token: null,
+        worktreePath: '/mock-worktree',
+      },
+      cli: 'gh' as const,
+    }),
+  };
+});
+
 // Mock the central shell helper. Every shell-out in worktree.ts is now
 // supposed to flow through runCommand(cmd, args[], opts), so we can assert
 // on (cmd, args) shape directly — and adversarial inputs end up as argv
@@ -441,7 +461,7 @@ describe('Worktree Service', () => {
       const adversarialTitle = 'task $(whoami) `id` "quoted"';
       const adversarialBody = "It's $(rm -rf ~) \"quoted\" `evil`";
 
-      const result = await createPullRequest('/repo', 1, adversarialTitle, adversarialBody);
+      const result = await createPullRequest('/repo', 1, adversarialTitle, adversarialBody, 1);
 
       expect(result.success).toBe(true);
       expect(capturedTitle).toBe(adversarialTitle);
@@ -455,7 +475,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await createPullRequest('/repo', 10, 'Title', 'Body');
+      const result = await createPullRequest('/repo', 10, 'Title', 'Body', 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not authenticated');
@@ -467,7 +487,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await createPullRequest('/repo', 1, 'Title', 'Body');
+      const result = await createPullRequest('/repo', 1, 'Title', 'Body', 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/branch/i);
@@ -485,7 +505,7 @@ describe('Worktree Service', () => {
         stderr: '',
       }));
 
-      const result = await getPullRequestStatus('/repo', 10);
+      const result = await getPullRequestStatus('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(true);
@@ -499,7 +519,7 @@ describe('Worktree Service', () => {
         throw new Error('no pull request found');
       });
 
-      const result = await getPullRequestStatus('/repo', 10);
+      const result = await getPullRequestStatus('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(result.exists).toBe(false);
@@ -516,7 +536,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(calls.some((c) => c.join(' ').includes('gh pr merge --merge'))).toBe(true);
@@ -545,7 +565,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
       expect(mergeCallCount).toBe(2);
@@ -567,7 +587,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(true);
     }, 20000);
@@ -584,7 +604,7 @@ describe('Worktree Service', () => {
         return { stdout: '', stderr: '' };
       });
 
-      const result = await mergeAndCleanup('/repo', 10);
+      const result = await mergeAndCleanup('/repo', 10, 1);
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('not mergeable');

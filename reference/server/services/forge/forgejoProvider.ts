@@ -1,3 +1,4 @@
+import { runCommand } from '../shell.js';
 import type {
   ForgeProvider,
   ForgeContext,
@@ -39,6 +40,8 @@ function mapCiState(state: string): CIStatus['status'] {
 
 export const forgejoProvider: ForgeProvider = {
   async createPR(ctx: ForgeContext, args: CreatePRArgs): Promise<CreatePRResultProvider> {
+    // Push the branch to origin before opening the PR (mirrors githubProvider contract).
+    await runCommand('git', ['push', '-u', 'origin', args.branch], { cwd: ctx.worktreePath });
     const repoData = (await api(ctx, 'GET', `/repos/${ctx.owner}/${ctx.repo}`)) as {
       default_branch: string;
     };

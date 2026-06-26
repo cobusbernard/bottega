@@ -33,6 +33,11 @@ export interface ReviewCommentProvider {
 }
 
 export interface ForgeProvider {
+  /**
+   * Ensure the branch is pushed to origin, then open a pull request.
+   * Every provider MUST push before calling the forge API; callers must
+   * NOT push separately — the push is the provider's responsibility.
+   */
   createPR(ctx: ForgeContext, args: CreatePRArgs): Promise<CreatePRResultProvider>;
   getPRStatus(ctx: ForgeContext, args: { branch: string | null }): Promise<PullRequestStatusResult>;
   mergePR(ctx: ForgeContext, args: { prNumber: number }): Promise<void>;

@@ -38,6 +38,7 @@ export async function createOrUpdatePR(
   taskId: number,
   title: string,
   body: string,
+  userId: number,
 ): Promise<PRResult> {
   // 1. Check for uncommitted changes -> commit
   const changesResult = await hasUncommittedChanges(repoPath, taskId);
@@ -55,7 +56,7 @@ export async function createOrUpdatePR(
   }
 
   // 3. Create PR
-  return worktreeCreatePR(repoPath, taskId, title, body);
+  return worktreeCreatePR(repoPath, taskId, title, body, userId);
 }
 
 /**
@@ -64,8 +65,9 @@ export async function createOrUpdatePR(
 export async function getCIStatusWithDetails(
   repoPath: string,
   taskId: number,
+  userId: number,
 ): Promise<CIStatusResult> {
-  const prStatus = await getPullRequestStatus(repoPath, taskId);
+  const prStatus = await getPullRequestStatus(repoPath, taskId, userId);
   if (!prStatus.success || !prStatus.exists) {
     return { success: false, error: 'No PR found' };
   }
