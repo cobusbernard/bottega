@@ -44,7 +44,7 @@ Now follow the standard PR creation and CI monitoring procedure below. `complete
 ### 2. Monitor CI Status
 Check the CI status:
 ```bash
-gh pr checks
+{{forgeCli}} pr checks
 ```
 
 ### 3. Handle CI Results
@@ -58,7 +58,7 @@ gh pr checks
 Proceed to step 4 (conflict check) before completing.
 
 **If FAILED:**
-1. Get failure details: `gh pr checks` and `gh run view <run-id> --log-failed`
+1. Get failure details: `{{forgeCli}} pr checks` and {{ciLogHint}}
 2. Analyze what's causing the failures (test failures, build errors, lint issues)
 3. Fix the issues in the codebase
 4. Commit and push: `git add -A && git commit -m "Fix CI: <description>" && git push`
@@ -71,7 +71,7 @@ Proceed to step 4 (conflict check) before completing.
 ### 4. Check for Merge Conflicts
 Once CI passes, check if the PR has merge conflicts with the base branch:
 ```bash
-gh pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }'
+{{forgeCli}} pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }'
 ```
 
 **If mergeable is "MERGEABLE" (no conflicts):**

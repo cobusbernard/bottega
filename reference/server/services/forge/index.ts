@@ -33,6 +33,25 @@ export function parseRemoteUrl(remoteUrl: string): { owner: string; repo: string
 }
 
 /**
+ * Lightweight helper that reads the forge CLI name for a task without
+ * parsing the git remote or throwing for misconfigured connections.
+ * Returns 'forge' only when the project is linked to an enabled Forgejo
+ * connection; defaults to 'gh' in all other cases.
+ */
+export function resolveForgeCli(taskId: number): 'gh' | 'forge' {
+  const task = tasksDb.getById(taskId);
+  if (!task) return 'gh';
+
+  const project = projectsDb.getByIdAdmin(task.project_id);
+  if (!project?.forge_connection_id) return 'gh';
+
+  const connection = forgeConnectionsDb.getById(project.forge_connection_id);
+  if (!connection) return 'gh';
+
+  return connection.type === 'forgejo' ? 'forge' : 'gh';
+}
+
+/**
  * Resolve which forge provider + context to use for a given task.
  *
  * Resolution order:

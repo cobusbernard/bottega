@@ -4,7 +4,10 @@ import type { ForgeConnectionRow } from '../../database/db.js';
 
 vi.mock('../../database/db.js', () => ({
   tasksDb: { getById: vi.fn(() => ({ id: 1, project_id: 9 })) },
-  projectsDb: { getById: vi.fn(() => ({ id: 9, repo_folder_path: '/repo', forge_connection_id: null })) },
+  projectsDb: {
+    getById: vi.fn(() => ({ id: 9, repo_folder_path: '/repo', forge_connection_id: null })),
+    getByIdAdmin: vi.fn(() => ({ id: 9, repo_folder_path: '/repo', forge_connection_id: null })),
+  },
   forgeConnectionsDb: { getById: vi.fn(() => undefined), listEnabled: vi.fn(() => []) },
 }));
 vi.mock('../forgeCredentials.js', () => ({ getForgeToken: vi.fn(() => 'test-token') }));
@@ -12,7 +15,7 @@ vi.mock('../shell.js', () => ({
   runCommand: vi.fn(() => Promise.resolve({ stdout: '', stderr: '' })),
 }));
 
-import { resolveForgeProvider, parseRemoteUrl } from './index.js';
+import { resolveForgeProvider, parseRemoteUrl, resolveForgeCli } from './index.js';
 import { tasksDb, projectsDb, forgeConnectionsDb } from '../../database/db.js';
 import { runCommand } from '../shell.js';
 
@@ -64,6 +67,65 @@ describe('resolveForgeProvider', () => {
     expect(r.ctx.baseUrl).toBe('https://git.example.com');
     expect(r.ctx.owner).toBe('myorg');
     expect(r.ctx.repo).toBe('myrepo');
+  });
+});
+
+describe('resolveForgeCli', () => {
+  it('returns gh when the project has no forge connection', () => {
+    // Default mocks: project.forge_connection_id = null
+    expect(resolveForgeCli(1)).toBe('gh');
+  });
+
+  it('returns gh when the connection is of type github', () => {
+    vi.mocked(forgeConnectionsDb.getById).mockReturnValueOnce({
+      id: 10,
+      type: 'github',
+      name: 'GitHub',
+      base_url: 'https://github.com',
+      enabled: 1,
+      created_at: '',
+    } satisfies ForgeConnectionRow);
+    vi.mocked(projectsDb.getByIdAdmin).mockReturnValueOnce({
+      id: 9,
+      user_id: 1,
+      name: 'test',
+      repo_folder_path: '/repo',
+      subproject_path: null,
+      active_worktree_task_id: null,
+      serve_symlink_path: null,
+      systemd_service_name: null,
+      app_url: null,
+      forge_connection_id: 10,
+      created_at: '',
+      updated_at: '',
+    } satisfies ProjectRow);
+    expect(resolveForgeCli(1)).toBe('gh');
+  });
+
+  it('returns forge when the connection is of type forgejo', () => {
+    vi.mocked(forgeConnectionsDb.getById).mockReturnValueOnce({
+      id: 20,
+      type: 'forgejo',
+      name: 'Corp Forge',
+      base_url: 'https://git.example.com',
+      enabled: 1,
+      created_at: '',
+    } satisfies ForgeConnectionRow);
+    vi.mocked(projectsDb.getByIdAdmin).mockReturnValueOnce({
+      id: 9,
+      user_id: 1,
+      name: 'test',
+      repo_folder_path: '/repo',
+      subproject_path: null,
+      active_worktree_task_id: null,
+      serve_symlink_path: null,
+      systemd_service_name: null,
+      app_url: null,
+      forge_connection_id: 20,
+      created_at: '',
+      updated_at: '',
+    } satisfies ProjectRow);
+    expect(resolveForgeCli(1)).toBe('forge');
   });
 });
 

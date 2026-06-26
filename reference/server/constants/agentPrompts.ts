@@ -40,7 +40,11 @@ interface ReviewWebhookContext {
  * Pre-rendered {{prCreateOrVerifyBlock}} — the "create a new PR" vs "verify the
  * existing PR" opening step of the PR/CI procedure inlined into pr.md and yolo.md.
  */
-function buildPrCreateOrVerifyBlock(taskId: number, prUrl: string | null | undefined): string {
+function buildPrCreateOrVerifyBlock(
+  taskId: number,
+  prUrl: string | null | undefined,
+  forgeCli: 'gh' | 'forge' = 'gh',
+): string {
   if (prUrl) {
     return `### 1. Verify PR Exists
 A PR already exists at ${prUrl}. Skip to step 2.`;
@@ -56,7 +60,18 @@ Create a PR for this task:
    \`\`\`
 4. Push to origin: \`git push -u origin $(git branch --show-current)\`
 5. Create PR with a short specific title and concise summary body. Replace the placeholders with the actual task title and implementation summary:
-   \`gh pr create --title "<short task title>" --body "Summary: <what the task does and how this implementation solves it. Keep this to a short paragraph. Task: #${taskId}>"\``;
+   \`${forgeCli} pr create --title "<short task title>" --body "Summary: <what the task does and how this implementation solves it. Keep this to a short paragraph. Task: #${taskId}>"\``;
+}
+
+/**
+ * Select the forge-appropriate CI log hint fragment. For GitHub this is the
+ * `gh run view --log-failed` command; for Forgejo, which has no equivalent
+ * Actions log command, it directs the agent to the check link instead.
+ */
+function buildCiLogHint(forgeCli: 'gh' | 'forge'): string {
+  return forgeCli === 'gh'
+    ? '`gh run view <run-id> --log-failed`'
+    : "open the failed check's link shown by `forge pr checks`";
 }
 
 export async function generatePlanificationMessage(
@@ -91,24 +106,28 @@ export async function generatePrAgentMessage(
   taskDocPath: string,
   taskId: number,
   prUrl: string | null | undefined,
+  forgeCli: 'gh' | 'forge' = 'gh',
 ): Promise<string> {
   const prContextLine = prUrl
     ? `- Existing PR: ${prUrl}`
     : '- No PR exists yet - you need to create one';
-  const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl);
-  return renderPrompt('pr', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock });
+  const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl, forgeCli);
+  const ciLogHint = buildCiLogHint(forgeCli);
+  return renderPrompt('pr', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, ciLogHint });
 }
 
 export async function generateYoloMessage(
   taskDocPath: string,
   taskId: number,
   prUrl: string | null | undefined,
+  forgeCli: 'gh' | 'forge' = 'gh',
 ): Promise<string> {
   const prContextLine = prUrl
     ? `- Existing PR: ${prUrl}`
     : '- No PR exists yet - you will create one at the end';
-  const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl);
-  return renderPrompt('yolo', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock });
+  const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl, forgeCli);
+  const ciLogHint = buildCiLogHint(forgeCli);
+  return renderPrompt('yolo', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, ciLogHint });
 }
 
 export async function generatePrAgentCommentMessage(
@@ -116,6 +135,7 @@ export async function generatePrAgentCommentMessage(
   taskId: number,
   prUrl: string | null | undefined,
   webhookContext: CommentWebhookContext,
+  forgeCli: 'gh' | 'forge' = 'gh',
 ): Promise<string> {
   const { commentBody, commentAuthor, fileContext } = webhookContext || {};
 
@@ -156,7 +176,8 @@ ${fileContext.diffHunk}
 ${quotedComment}
 ${fileLocationSection}`;
 
-  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection });
+  const ciLogHint = buildCiLogHint(forgeCli);
+  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, ciLogHint });
 }
 
 export async function generatePrAgentReviewMessage(
@@ -164,6 +185,7 @@ export async function generatePrAgentReviewMessage(
   taskId: number,
   prUrl: string | null | undefined,
   webhookContext: ReviewWebhookContext,
+  forgeCli: 'gh' | 'forge' = 'gh',
 ): Promise<string> {
   const { reviewBody, reviewAuthor, comments } = webhookContext || {};
 
@@ -221,7 +243,8 @@ ${commentEntries}
 
   const feedbackSection = `## User Feedback${reviewBodySection}${inlineCommentsSection}`;
 
-  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection });
+  const ciLogHint = buildCiLogHint(forgeCli);
+  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, ciLogHint });
 }
 
 /**

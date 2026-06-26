@@ -248,3 +248,56 @@ describe('generatePrAgentReviewMessage (batched review)', () => {
     expect(msg).toContain(`complete-pr.ts ${taskId}`);
   });
 });
+
+describe('forge-aware CLI rendering', () => {
+  const taskDocPath = '/repo/.bottega/tasks/task-1.md';
+  const taskId = 1;
+
+  it('renders gh pr create for GitHub (default)', async () => {
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');
+    expect(msg).toContain('gh pr create');
+  });
+
+  it('renders forge pr create for Forgejo', async () => {
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
+    expect(msg).toContain('forge pr create');
+    expect(msg).not.toContain('gh pr create');
+  });
+
+  it('renders gh pr checks for GitHub and forge pr checks for Forgejo', async () => {
+    const ghMsg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');
+    expect(ghMsg).toContain('gh pr checks');
+
+    const fgMsg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
+    expect(fgMsg).toContain('forge pr checks');
+    expect(fgMsg).not.toContain('gh pr checks');
+  });
+
+  it('GitHub path includes gh run view --log-failed hint', async () => {
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');
+    expect(msg).toContain('gh run view <run-id> --log-failed');
+  });
+
+  it('Forgejo path does NOT include gh run view --log-failed', async () => {
+    const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'forge');
+    expect(msg).not.toContain('gh run view');
+    expect(msg).toContain("open the failed check's link shown by `forge pr checks`");
+  });
+
+  it('yolo: renders forge pr create for Forgejo', async () => {
+    const msg = await generateYoloMessage(taskDocPath, taskId, null, 'forge');
+    expect(msg).toContain('forge pr create');
+    expect(msg).not.toContain('gh pr create');
+  });
+
+  it('pr-feedback: renders forge pr checks for Forgejo', async () => {
+    const prUrl = 'https://git.example.com/org/repo/pulls/1';
+    const msg = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, {
+      commentBody: 'fix it',
+      commentAuthor: 'alice',
+    }, 'forge');
+    expect(msg).toContain('forge pr checks');
+    expect(msg).not.toContain('gh pr checks');
+    expect(msg).not.toContain('gh run view');
+  });
+});

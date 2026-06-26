@@ -25,6 +25,7 @@ import {
   generatePrAgentReviewMessage,
   generateYoloMessage,
 } from '../constants/agentPrompts.js';
+import { resolveForgeCli } from './forge/index.js';
 import { loadAgentModelSettings } from './agentModelSettings.js';
 import type { AgentRunRow, CreatedConversation } from '../database/db.js';
 import type {
@@ -102,24 +103,26 @@ export async function startAgentRun(
       // getPullRequestStatus internally derives the worktree path from repo + taskId
       const prStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
       const prUrl = prStatus.exists ? prStatus.url ?? null : null;
+      const forgeCli = resolveForgeCli(taskId);
 
       // Use review-specific prompt if triggered by webhook with review comments
       // Use comment-specific prompt if triggered by webhook with single comment context
       const webhookCtx = options.webhookContext;
       if (webhookCtx?.comments) {
         // Shape is validated by the webhook route (commit 5: zod boundary).
-        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never);
+        message = await generatePrAgentReviewMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli);
       } else if (webhookCtx) {
-        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never);
+        message = await generatePrAgentCommentMessage(taskDocPath, taskId, prUrl, webhookCtx as never, forgeCli);
       } else {
-        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl);
+        message = await generatePrAgentMessage(taskDocPath, taskId, prUrl, forgeCli);
       }
       break;
     }
     case 'yolo': {
       const yoloPrStatus = await getPullRequestStatus(taskWithProject.repo_folder_path, taskId);
       const yoloPrUrl = yoloPrStatus.exists ? yoloPrStatus.url ?? null : null;
-      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl);
+      const yoloForgeCli = resolveForgeCli(taskId);
+      message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl, yoloForgeCli);
       break;
     }
     default:
