@@ -24,12 +24,25 @@ CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_active ON users(is_active);
 -- Note: idx_users_api_key_hash unique partial index is created in migration (db.js)
 
+-- Forge connections (GitHub, Forgejo instances used as source-of-truth remotes)
+CREATE TABLE IF NOT EXISTS forge_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK (type IN ('github','forgejo')),
+    name TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_forge_connections_enabled ON forge_connections(enabled);
+
 -- Projects table - User-created projects pointing to repo folders
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     repo_folder_path TEXT UNIQUE NOT NULL,
+    forge_connection_id INTEGER REFERENCES forge_connections(id),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
