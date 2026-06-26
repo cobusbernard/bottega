@@ -31,6 +31,7 @@ export interface UpdateProjectRequest {
   name?: string | undefined;
   repoFolderPath?: string | undefined;
   subprojectPath?: string | undefined;
+  forge_connection_id?: number | null | undefined;
 }
 
 export type UpdateProjectResponse = ProjectRow;

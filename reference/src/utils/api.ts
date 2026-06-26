@@ -804,6 +804,32 @@ export const api = {
       }),
   },
 
+  // Forge connections — read-only list of enabled connections for all
+  // authenticated users. Used by ProjectForm to populate the forge selector.
+  forgeConnections: {
+    listEnabled: (): TypedFetch<ForgeConnectionRow[]> =>
+      authenticatedFetch<ForgeConnectionRow[]>('/api/forge-connections'),
+  },
+
+  // Per-user forge tokens — write-only PAT storage. Responses never contain
+  // the stored token value.
+  forgeTokens: {
+    listStatus: (): TypedFetch<{ connectionId: number; connected: boolean }[]> =>
+      authenticatedFetch<{ connectionId: number; connected: boolean }[]>(
+        '/api/me/forge-tokens',
+      ),
+    set: (connectionId: number, token: string): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>('/api/me/forge-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ connectionId, token }),
+      }),
+    delete: (connectionId: number): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(
+        `/api/me/forge-tokens/${connectionId}`,
+        { method: 'DELETE' },
+      ),
+  },
+
   // Generic GET method for any endpoint. Returns `unknown` — callers must
   // narrow at use site (or migrate to a dedicated typed method).
   get: (endpoint: string): TypedFetch<unknown> =>

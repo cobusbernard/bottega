@@ -1,7 +1,8 @@
 /**
  * ProjectForm.tsx - Project Create Modal
  *
- * Modal form for creating a new project. Captures name and repo folder path.
+ * Modal form for creating a new project. Captures name, repo folder path,
+ * and an optional forge connection (populated from enabled connections).
  * Project editing is done via the full ProjectEditPage.
  */
 
@@ -9,10 +10,13 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
+import { api } from '../utils/api';
+import type { ForgeConnectionRow } from '../../shared/types/db';
 
 export interface ProjectFormSubmitData {
   name: string;
   repoFolderPath: string;
+  forgeConnectionId?: number | null;
 }
 
 export interface ProjectFormSubmitResult {
@@ -35,13 +39,25 @@ function ProjectForm({
 }: ProjectFormProps) {
   const [name, setName] = useState('');
   const [repoFolderPath, setRepoFolderPath] = useState('');
+  const [forgeConnectionId, setForgeConnectionId] = useState<number | null>(null);
+  const [forgeConnections, setForgeConnections] = useState<ForgeConnectionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setName('');
       setRepoFolderPath('');
+      setForgeConnectionId(null);
       setError(null);
+      // Fetch enabled forge connections to populate the selector
+      api.forgeConnections.listEnabled().then(async (res) => {
+        if (res.ok) {
+          const connections = await res.json();
+          setForgeConnections(connections);
+        }
+      }).catch(() => {
+        // Non-fatal — the forge selector just stays empty
+      });
     }
   }, [isOpen]);
 
@@ -63,6 +79,7 @@ function ProjectForm({
       const result = await onSubmit({
         name: name.trim(),
         repoFolderPath: repoFolderPath.trim(),
+        forgeConnectionId,
       });
 
       if (!result.success) {
@@ -139,6 +156,30 @@ function ProjectForm({
                 placeholder="/path/to/your/project"
               />
             </div>
+
+            {/* Forge connection (optional) */}
+            {forgeConnections.length > 0 && (
+              <div className="space-y-2">
+                <label htmlFor="forge-connection" className="text-sm font-medium text-foreground">
+                  Forge
+                </label>
+                <select
+                  id="forge-connection"
+                  value={forgeConnectionId ?? ''}
+                  onChange={(e) =>
+                    setForgeConnectionId(e.target.value ? Number(e.target.value) : null)
+                  }
+                  className="w-full text-sm bg-background border border-input rounded-md px-3 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">None (GitHub default)</option>
+                  {forgeConnections.map((conn) => (
+                    <option key={conn.id} value={conn.id}>
+                      {conn.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="flex gap-2 pt-4">

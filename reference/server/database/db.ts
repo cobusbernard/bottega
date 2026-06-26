@@ -831,6 +831,7 @@ export interface ProjectUpdates {
   name?: string;
   repo_folder_path?: string;
   subproject_path?: string | null;
+  forge_connection_id?: number | null;
 }
 
 export interface WebServerConfig {
@@ -910,6 +911,7 @@ const projectsDb = {
       'name',
       'repo_folder_path',
       'subproject_path',
+      'forge_connection_id',
     ];
     const setClause: string[] = [];
     const values: unknown[] = [];

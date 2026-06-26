@@ -175,6 +175,44 @@ describe('Projects Routes - Phase 3', () => {
       expect(updateProject).toHaveBeenCalledWith(1, testUserId, { name: 'Updated Name' });
     });
 
+    it('should persist forge_connection_id when provided', async () => {
+      const updatedProject = {
+        id: 1,
+        user_id: testUserId,
+        name: 'Project 1',
+        repo_folder_path: '/path/1',
+        forge_connection_id: 3,
+      };
+      vi.mocked(updateProject).mockReturnValue(updatedProject as never);
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ forge_connection_id: 3 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.forge_connection_id).toBe(3);
+      expect(updateProject).toHaveBeenCalledWith(1, testUserId, { forge_connection_id: 3 });
+    });
+
+    it('should clear forge_connection_id when set to null', async () => {
+      const updatedProject = {
+        id: 1,
+        user_id: testUserId,
+        name: 'Project 1',
+        repo_folder_path: '/path/1',
+        forge_connection_id: null,
+      };
+      vi.mocked(updateProject).mockReturnValue(updatedProject as never);
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ forge_connection_id: null });
+
+      expect(response.status).toBe(200);
+      expect(response.body.forge_connection_id).toBeNull();
+      expect(updateProject).toHaveBeenCalledWith(1, testUserId, { forge_connection_id: null });
+    });
+
     it('should return 404 if project not found', async () => {
       vi.mocked(updateProject).mockReturnValue(null);
 

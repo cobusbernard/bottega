@@ -124,6 +124,9 @@ router.put(
       if (body.subprojectPath !== undefined) {
         updates.subproject_path = body.subprojectPath?.trim() || null;
       }
+      if (body.forge_connection_id !== undefined) {
+        updates.forge_connection_id = body.forge_connection_id;
+      }
 
       const project = updateProject(projectId, userId, updates);
       if (!project) {

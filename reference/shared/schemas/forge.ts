@@ -13,3 +13,10 @@ export const SetEnabledSchema = z.object({
   enabled: z.boolean(),
 });
 export type SetEnabled = z.infer<typeof SetEnabledSchema>;
+
+// Per-user forge PAT storage
+export const SetForgeTokenSchema = z.object({
+  connectionId: z.number().int().positive(),
+  token: z.string().min(1, 'Token must not be empty'),
+});
+export type SetForgeToken = z.infer<typeof SetForgeTokenSchema>;

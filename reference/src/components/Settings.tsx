@@ -13,7 +13,7 @@ import CodexAuthPanel from './CodexAuthPanel';
 import ClaudeAuthPanel from './ClaudeAuthPanel';
 import OpenCodeAuthPanel from './OpenCodeAuthPanel';
 import CopilotAuthPanel from './CopilotAuthPanel';
-import type { ProjectRow } from '../../shared/types/db';
+import type { ProjectRow, ForgeConnectionRow } from '../../shared/types/db';
 import type { ApiError } from '../../shared/api/_common';
 
 export type SettingsTab = 'tools' | 'appearance' | 'prompts' | 'agentModels' | 'account' | 'providers';
@@ -53,6 +53,14 @@ function Settings({
   const [projectSortOrder, setProjectSortOrder] = useState('name');
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
 
+  // Connect forge state (Account tab)
+  const [forgeConnections, setForgeConnections] = useState<ForgeConnectionRow[]>([]);
+  const [forgeTokenStatus, setForgeTokenStatus] = useState<{ connectionId: number; connected: boolean }[]>([]);
+  const [forgePats, setForgePats] = useState<Record<number, string>>({});
+  const [forgeSaving, setForgeSaving] = useState<Record<number, boolean>>({});
+  const [forgeError, setForgeError] = useState<Record<number, string | null>>({});
+  const [forgeSuccess, setForgeSuccess] = useState<Record<number, boolean>>({});
+
   void projects;
 
   // Code Editor settings
@@ -90,10 +98,11 @@ function Settings({
   useEffect(() => {
     if (isOpen) {
       void loadSettings();
+      void loadForgeData();
       setActiveTab(initialTab);
       setProfileError(null);
     }
-     
+
   }, [isOpen, initialTab]);
 
   useEffect(() => {
@@ -207,6 +216,66 @@ function Settings({
       setDisallowedTools([]);
       setSkipPermissions(false);
       setProjectSortOrder('name');
+    }
+  };
+
+  const loadForgeData = async () => {
+    try {
+      const [connRes, statusRes] = await Promise.all([
+        api.forgeConnections.listEnabled(),
+        api.forgeTokens.listStatus(),
+      ]);
+      if (connRes.ok) setForgeConnections(await connRes.json());
+      if (statusRes.ok) setForgeTokenStatus(await statusRes.json());
+    } catch {
+      // Non-fatal — forge section just stays empty
+    }
+  };
+
+  const handleSaveForgeToken = async (connectionId: number) => {
+    const token = forgePats[connectionId] ?? '';
+    if (!token.trim()) return;
+    setForgeSaving((prev) => ({ ...prev, [connectionId]: true }));
+    setForgeError((prev) => ({ ...prev, [connectionId]: null }));
+    setForgeSuccess((prev) => ({ ...prev, [connectionId]: false }));
+    try {
+      const res = await api.forgeTokens.set(connectionId, token.trim());
+      if (res.ok) {
+        setForgeTokenStatus((prev) =>
+          prev.map((s) => s.connectionId === connectionId ? { ...s, connected: true } : s)
+            .concat(prev.some((s) => s.connectionId === connectionId) ? [] : [{ connectionId, connected: true }])
+        );
+        setForgePats((prev) => ({ ...prev, [connectionId]: '' }));
+        setForgeSuccess((prev) => ({ ...prev, [connectionId]: true }));
+      } else {
+        const body = (await res.json().catch(() => ({}))) as ApiError;
+        setForgeError((prev) => ({ ...prev, [connectionId]: body.error || 'Failed to save' }));
+      }
+    } catch {
+      setForgeError((prev) => ({ ...prev, [connectionId]: 'Failed to save token' }));
+    } finally {
+      setForgeSaving((prev) => ({ ...prev, [connectionId]: false }));
+    }
+  };
+
+  const handleClearForgeToken = async (connectionId: number) => {
+    setForgeSaving((prev) => ({ ...prev, [connectionId]: true }));
+    setForgeError((prev) => ({ ...prev, [connectionId]: null }));
+    setForgeSuccess((prev) => ({ ...prev, [connectionId]: false }));
+    try {
+      const res = await api.forgeTokens.delete(connectionId);
+      if (res.ok) {
+        setForgeTokenStatus((prev) =>
+          prev.map((s) => s.connectionId === connectionId ? { ...s, connected: false } : s)
+        );
+      } else {
+        const body = (await res.json().catch(() => ({}))) as ApiError;
+        setForgeError((prev) => ({ ...prev, [connectionId]: body.error || 'Failed to clear' }));
+      }
+    } catch {
+      setForgeError((prev) => ({ ...prev, [connectionId]: 'Failed to clear token' }));
+    } finally {
+      setForgeSaving((prev) => ({ ...prev, [connectionId]: false }));
     }
   };
 
@@ -754,6 +823,95 @@ function Settings({
                 </div>
 
                 <ApiKeyPanel />
+
+                {/* Connect forge */}
+                {forgeConnections.length > 0 && (
+                  <div className="space-y-4" data-testid="connect-forge-section">
+                    <h3 className="text-lg font-medium text-foreground">
+                      Connect forge
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Save a personal access token (PAT) for each forge so
+                      agents can open pull requests and read CI status on your
+                      behalf. Tokens are stored encrypted on the server and are
+                      never returned after saving.
+                    </p>
+                    {forgeConnections.map((conn) => {
+                      const status = forgeTokenStatus.find((s) => s.connectionId === conn.id);
+                      const isConnected = status?.connected ?? false;
+                      const isSaving = forgeSaving[conn.id] ?? false;
+                      const err = forgeError[conn.id] ?? null;
+                      const ok = forgeSuccess[conn.id] ?? false;
+                      return (
+                        <div
+                          key={conn.id}
+                          className="bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-lg p-4 space-y-3"
+                          data-testid={`forge-connection-${conn.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-foreground">{conn.name}</div>
+                              <div className="text-xs text-muted-foreground capitalize">{conn.type}</div>
+                            </div>
+                            <span
+                              className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                                isConnected
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                                  : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                              }`}
+                              data-testid={`forge-status-${conn.id}`}
+                            >
+                              {isConnected ? 'connected' : 'not connected'}
+                            </span>
+                          </div>
+                          <div className="flex gap-2">
+                            <Input
+                              type="password"
+                              value={forgePats[conn.id] ?? ''}
+                              onChange={(e) =>
+                                setForgePats((prev) => ({ ...prev, [conn.id]: e.target.value }))
+                              }
+                              placeholder="Paste personal access token"
+                              disabled={isSaving}
+                              className="flex-1 h-9"
+                              style={{ fontSize: '16px' }}
+                              data-testid={`forge-pat-input-${conn.id}`}
+                            />
+                            <Button
+                              size="sm"
+                              className="h-9"
+                              onClick={() => void handleSaveForgeToken(conn.id)}
+                              disabled={isSaving || !(forgePats[conn.id] ?? '').trim()}
+                              data-testid={`forge-save-${conn.id}`}
+                            >
+                              {isSaving ? 'Saving...' : 'Save'}
+                            </Button>
+                            {isConnected && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-9"
+                                onClick={() => void handleClearForgeToken(conn.id)}
+                                disabled={isSaving}
+                                data-testid={`forge-clear-${conn.id}`}
+                              >
+                                Clear
+                              </Button>
+                            )}
+                          </div>
+                          {err && (
+                            <div className="text-sm text-red-600 dark:text-red-400">{err}</div>
+                          )}
+                          {ok && !err && (
+                            <div className="text-sm text-green-600 dark:text-green-400">
+                              Token saved.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 

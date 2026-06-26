@@ -19,5 +19,6 @@ export const UpdateProjectBodySchema = z.object({
   // The DB layer accepts `null` to clear the column, and the existing
   // type `UpdateProjectRequest` allows `undefined`. Be permissive here.
   subprojectPath: z.string().nullable().optional(),
+  forge_connection_id: z.number().int().positive().nullable().optional(),
 });
 export type UpdateProjectBody = z.infer<typeof UpdateProjectBodySchema>;
