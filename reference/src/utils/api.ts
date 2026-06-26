@@ -108,6 +108,7 @@ import type {
   AddProjectMemberResponse,
   RemoveProjectMemberResponse,
 } from '../../shared/api/admin';
+import type { ForgeConnectionRow } from '../../shared/types/db';
 import type {
   ListPromptsResponse,
   GetPromptResponse,
@@ -722,6 +723,30 @@ export const api = {
         `/api/admin/projects/${projectId}/members/${userId}`,
         { method: 'DELETE' }
       ),
+    // Forge connections management
+    listForgeConnections: (): TypedFetch<ForgeConnectionRow[]> =>
+      authenticatedFetch<ForgeConnectionRow[]>('/api/admin/forge-connections'),
+    createForgeConnection: (
+      type: 'github' | 'forgejo',
+      name: string,
+      base_url: string
+    ): TypedFetch<ForgeConnectionRow> =>
+      authenticatedFetch<ForgeConnectionRow>('/api/admin/forge-connections', {
+        method: 'POST',
+        body: JSON.stringify({ type, name, base_url }),
+      }),
+    setForgeConnectionEnabled: (
+      id: number,
+      enabled: boolean
+    ): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(`/api/admin/forge-connections/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      }),
+    deleteForgeConnection: (id: number): TypedFetch<{ success: true }> =>
+      authenticatedFetch<{ success: true }>(`/api/admin/forge-connections/${id}`, {
+        method: 'DELETE',
+      }),
   },
 
   // Global instance settings (key/value, e.g. internalToolName, githubPrTrigger).

@@ -9,6 +9,7 @@ import type {
   AgentType,
   AppSettingRow,
   ConversationRow,
+  ForgeConnectionRow,
   ProjectMemberRow,
   ProjectRow,
   Provider,
@@ -1481,15 +1482,6 @@ const agentRunsDb = {
 // forgeConnectionsDb
 // ---------------------------------------------------------------------------
 
-export interface ForgeConnectionRow {
-  id: number;
-  type: 'github' | 'forgejo';
-  name: string;
-  base_url: string;
-  enabled: 0 | 1;
-  created_at: string;
-}
-
 const forgeConnectionsDb = {
   list: (): ForgeConnectionRow[] =>
     db
@@ -1625,4 +1617,5 @@ export type {
   AgentRunStatus,
   AppSettingRow,
   UserAgentModelSettingsRow,
+  ForgeConnectionRow,
 };

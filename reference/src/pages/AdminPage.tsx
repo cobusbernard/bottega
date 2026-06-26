@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, FolderGit2, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Users, FolderGit2, Plus, RefreshCw, GitBranch } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { ScrollArea } from '../components/ui/scroll-area';
-import { UserList, UserForm, ProjectMembersEditor } from '../components/Admin';
+import { UserList, UserForm, ProjectMembersEditor, ForgeConnections } from '../components/Admin';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../utils/api';
 import type {
@@ -13,7 +13,7 @@ import type {
 import type { ApiError } from '../../shared/api/_common';
 import type { UserFormSubmitData, UserFormSubmitResult } from '../components/Admin/UserForm';
 
-type AdminTab = 'users' | 'projects';
+type AdminTab = 'users' | 'projects' | 'forge-connections';
 
 function AdminPage() {
   const navigate = useNavigate();
@@ -217,6 +217,17 @@ function AdminPage() {
           <FolderGit2 className="h-4 w-4" />
           Project Memberships
         </button>
+        <button
+          onClick={() => setActiveTab('forge-connections')}
+          className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition-colors ${
+            activeTab === 'forge-connections'
+              ? 'text-primary border-b-2 border-primary'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <GitBranch className="h-4 w-4" />
+          Forge Connections
+        </button>
       </div>
 
       {/* Content */}
@@ -279,6 +290,10 @@ function AdminPage() {
                 />
               )}
             </div>
+          )}
+
+          {activeTab === 'forge-connections' && (
+            <ForgeConnections />
           )}
         </div>
       </ScrollArea>

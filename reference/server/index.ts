@@ -72,6 +72,7 @@ import conversationsRoutes from './routes/conversations.js';
 import agentRunsRoutes from './routes/agent-runs.js';
 import webServerRoutes from './routes/webServer.js';
 import adminRoutes from './routes/admin.js';
+import forgeConnectionsRoutes from './routes/forgeConnections.js';
 import webhooksRoutes from './routes/webhooks.js';
 import settingsRoutes from './routes/settings.js';
 import appSettingsRoutes from './routes/appSettings.js';
@@ -219,6 +220,7 @@ app.use('/api/settings', authenticateToken, settingsRoutes);
 app.use('/api/user-agent-model-settings', authenticateToken, userAgentModelSettingsRoutes);
 
 app.use('/api/admin', authenticateToken, requireAdmin, adminRoutes);
+app.use('/api/admin/forge-connections', authenticateToken, requireAdmin, forgeConnectionsRoutes);
 
 app.get('/api/streaming-sessions', authenticateToken, (req, res) => {
   const sessions = getAllActiveStreamingSessions(req.user?.id);

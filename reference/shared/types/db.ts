@@ -170,6 +170,17 @@ export interface SessionSummaryRow {
   summary_json: Buffer;
 }
 
+// ---- forge_connections ----------------------------------------------------
+
+export interface ForgeConnectionRow {
+  id: number;
+  type: 'github' | 'forgejo';
+  name: string;
+  base_url: string;
+  enabled: 0 | 1;
+  created_at: string;
+}
+
 // ---- app_settings ---------------------------------------------------------
 
 export interface AppSettingRow {

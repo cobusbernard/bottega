@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { ProjectRow, TaskRow } from '../../../shared/types/db.js';
-import type { ForgeConnectionRow } from '../../database/db.js';
+import type { ForgeConnectionRow } from '../../../shared/types/db.js';
 
 vi.mock('../../database/db.js', () => ({
   tasksDb: { getById: vi.fn(() => ({ id: 1, project_id: 9 })) },
