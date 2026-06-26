@@ -25,6 +25,7 @@ import {
   generatePrAgentReviewMessage,
   generateYoloMessage,
 } from '../constants/agentPrompts.js';
+import { getScriptsDir } from './promptRenderer.js';
 import { resolveForgeCli } from './forge/index.js';
 import { loadAgentModelSettings } from './agentModelSettings.js';
 import type { AgentRunRow, CreatedConversation } from '../database/db.js';
@@ -112,7 +113,7 @@ export async function startAgentRun(
       // For Forgejo: render a tsx-invocable path with --user/--task injected so the
       // agent can run it directly. For GitHub keep the plain 'gh' binary unchanged.
       const forgeCli = forgeCliRaw === 'forge'
-        ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
+        ? `tsx ${getScriptsDir()}/forge.ts`
         : 'gh';
       const forgeArgs = forgeCliRaw === 'forge' && effectiveUserId != null
         ? ` --user ${effectiveUserId} --task ${taskId}`
@@ -141,7 +142,7 @@ export async function startAgentRun(
       const yoloPrUrl = yoloPrStatus.exists ? yoloPrStatus.url ?? null : null;
       const yoloForgeCliRaw = resolveForgeCli(taskId);
       const yoloForgeCli = yoloForgeCliRaw === 'forge'
-        ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
+        ? `tsx ${getScriptsDir()}/forge.ts`
         : 'gh';
       const yoloForgeArgs = yoloForgeCliRaw === 'forge' && effectiveUserId != null
         ? ` --user ${effectiveUserId} --task ${taskId}`

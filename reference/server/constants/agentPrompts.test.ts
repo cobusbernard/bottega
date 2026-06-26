@@ -9,7 +9,7 @@ import {
   generatePrAgentCommentMessage,
   generatePrAgentReviewMessage,
 } from './agentPrompts.js';
-import { saveOverride, deleteOverride } from '../services/promptRenderer.js';
+import { saveOverride, deleteOverride, getScriptsDir } from '../services/promptRenderer.js';
 
 describe('generateYoloMessage', () => {
   const taskDocPath = '/repo/.bottega/tasks/task-42.md';
@@ -253,7 +253,7 @@ describe('forge-aware CLI rendering', () => {
   const taskDocPath = '/repo/.bottega/tasks/task-1.md';
   const taskId = 1;
   // The tsx invocation path rendered by agentRunner for Forgejo projects
-  const forgeTsx = 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts';
+  const forgeTsx = `tsx ${getScriptsDir()}/forge.ts`;
   // Leading space — forgeArgs carries the separator so GitHub renders no trailing space
   const forgeArgs = ' --user 5 --task 1';
 

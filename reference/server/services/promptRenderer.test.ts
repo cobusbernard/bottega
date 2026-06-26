@@ -17,7 +17,8 @@ import {
   getPromptsDir,
   getTemplatesDir,
   renderPrompt,
-  resolvePromptPath
+  resolvePromptPath,
+  getScriptsDir
 } from './promptRenderer.js';
 
 describe('promptRenderer', () => {
@@ -196,6 +197,7 @@ describe('promptRenderer', () => {
         forgeCli: 'gh',
         forgeArgs: '',
         ciLogHint: '`gh run view <run-id> --log-failed`',
+        scriptsDir: getScriptsDir(),
       });
       expect(out).toContain('### 1. CREATE BLOCK CONTENT');
       expect(out).toContain('complete-pr.ts 99');

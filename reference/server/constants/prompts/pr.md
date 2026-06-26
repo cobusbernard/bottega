@@ -45,7 +45,7 @@ Once CI passes, check if the PR has merge conflicts with the base branch:
 **If mergeable is "MERGEABLE" (no conflicts):**
 Run the completion script:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/complete-pr.ts {{taskId}}
+tsx {{scriptsDir}}/complete-pr.ts {{taskId}}
 ```
 
 **If mergeable is "CONFLICTING" (has conflicts):**

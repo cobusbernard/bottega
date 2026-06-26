@@ -116,6 +116,7 @@ import {
 import { getWorktreeProjectPath, worktreeExists } from './worktree.js';
 import { resolveForgeCli } from './forge/index.js';
 import { loadAgentModelSettings } from './agentModelSettings.js';
+import { getScriptsDir } from './promptRenderer.js';
 
 describe('agentRunner', () => {
   const mockTaskWithProject = {
@@ -476,7 +477,7 @@ describe('agentRunner', () => {
         expect.any(String),
         1,
         null,
-        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        `tsx ${getScriptsDir()}/forge.ts`,
         ' --user 5 --task 1',
       );
     });
@@ -504,7 +505,7 @@ describe('agentRunner', () => {
         expect.any(String),
         1,
         null,
-        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        `tsx ${getScriptsDir()}/forge.ts`,
         ' --user 5 --task 1',
       );
     });
@@ -522,7 +523,7 @@ describe('agentRunner', () => {
         1,
         null,
         expect.objectContaining({ commentBody: 'fix it' }),
-        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        `tsx ${getScriptsDir()}/forge.ts`,
         ' --user 5 --task 1',
       );
     });
@@ -540,7 +541,7 @@ describe('agentRunner', () => {
         1,
         null,
         expect.objectContaining({ reviewBody: 'lgtm' }),
-        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        `tsx ${getScriptsDir()}/forge.ts`,
         ' --user 5 --task 1',
       );
     });

@@ -33,7 +33,7 @@ You are a solo delivery agent. You own this task end-to-end in a single conversa
 ## Phase 4: Mark Workflow Complete
 When implementation and tests are done, run:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/complete-workflow.ts {{taskId}}
+tsx {{scriptsDir}}/complete-workflow.ts {{taskId}}
 ```
 
 ## Phase 5: PR + CI
@@ -77,7 +77,7 @@ Once CI passes, check if the PR has merge conflicts with the base branch:
 **If mergeable is "MERGEABLE" (no conflicts):**
 Run the completion script:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/complete-pr.ts {{taskId}}
+tsx {{scriptsDir}}/complete-pr.ts {{taskId}}
 ```
 
 **If mergeable is "CONFLICTING" (has conflicts):**

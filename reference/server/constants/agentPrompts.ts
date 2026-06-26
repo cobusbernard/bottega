@@ -8,7 +8,7 @@
  * to change agent behavior without touching code.
  */
 
-import { renderPrompt, resolvePromptPath } from '../services/promptRenderer.js';
+import { renderPrompt, resolvePromptPath, getScriptsDir } from '../services/promptRenderer.js';
 
 interface FileContext {
   path?: string;
@@ -59,7 +59,7 @@ Create a PR for this task:
 3. Verify there are commits ahead of the base branch: \`git log origin/main..HEAD --oneline\`
    - **If no commits ahead** (and no uncommitted changes were found in step 1): there is nothing to submit. Run the completion script and stop:
    \`\`\`bash
-   tsx /home/ubuntu/bottega/reference/scripts/complete-pr.ts ${taskId}
+   tsx ${getScriptsDir()}/complete-pr.ts ${taskId}
    \`\`\`
 4. Push to origin: \`git push -u origin $(git branch --show-current)\`
 5. Create PR with a short specific title and concise summary body. Replace the placeholders with the actual task title and implementation summary:
@@ -84,7 +84,7 @@ export async function generatePlanificationMessage(
 ): Promise<string> {
   const promptName = isTechnical ? 'planification' : 'planification-nontechnical';
   const planTemplatePath = resolvePromptPath('plan-template');
-  return renderPrompt(promptName, { taskDocPath, taskId, planTemplatePath });
+  return renderPrompt(promptName, { taskDocPath, taskId, planTemplatePath, scriptsDir: getScriptsDir() });
 }
 
 export async function generateImplementationMessage(
@@ -95,7 +95,7 @@ export async function generateImplementationMessage(
 }
 
 export async function generateReviewMessage(taskDocPath: string, taskId: number): Promise<string> {
-  return renderPrompt('review', { taskDocPath, taskId });
+  return renderPrompt('review', { taskDocPath, taskId, scriptsDir: getScriptsDir() });
 }
 
 export async function generateRefinementMessage(
@@ -117,7 +117,7 @@ export async function generatePrAgentMessage(
     : '- No PR exists yet - you need to create one';
   const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl, forgeCli, forgeArgs);
   const ciLogHint = buildCiLogHint(forgeCli);
-  return renderPrompt('pr', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, forgeArgs, ciLogHint });
+  return renderPrompt('pr', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, forgeArgs, ciLogHint, scriptsDir: getScriptsDir() });
 }
 
 export async function generateYoloMessage(
@@ -132,7 +132,7 @@ export async function generateYoloMessage(
     : '- No PR exists yet - you will create one at the end';
   const prCreateOrVerifyBlock = buildPrCreateOrVerifyBlock(taskId, prUrl, forgeCli, forgeArgs);
   const ciLogHint = buildCiLogHint(forgeCli);
-  return renderPrompt('yolo', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, forgeArgs, ciLogHint });
+  return renderPrompt('yolo', { taskDocPath, taskId, prContextLine, prCreateOrVerifyBlock, forgeCli, forgeArgs, ciLogHint, scriptsDir: getScriptsDir() });
 }
 
 export async function generatePrAgentCommentMessage(
@@ -183,7 +183,7 @@ ${quotedComment}
 ${fileLocationSection}`;
 
   const ciLogHint = buildCiLogHint(forgeCli);
-  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, forgeArgs, ciLogHint });
+  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, forgeArgs, ciLogHint, scriptsDir: getScriptsDir() });
 }
 
 export async function generatePrAgentReviewMessage(
@@ -251,7 +251,7 @@ ${commentEntries}
   const feedbackSection = `## User Feedback${reviewBodySection}${inlineCommentsSection}`;
 
   const ciLogHint = buildCiLogHint(forgeCli);
-  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, forgeArgs, ciLogHint });
+  return renderPrompt('pr-feedback', { taskDocPath, taskId, prUrl, feedbackSection, forgeCli, forgeArgs, ciLogHint, scriptsDir: getScriptsDir() });
 }
 
 /**

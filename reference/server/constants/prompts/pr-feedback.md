@@ -72,7 +72,7 @@ Once CI passes (or has no checks), check if the PR has merge conflicts:
 **If mergeable is "MERGEABLE" (no conflicts):**
 Run the completion script:
 ```bash
-tsx /home/ubuntu/bottega/reference/scripts/complete-pr.ts {{taskId}}
+tsx {{scriptsDir}}/complete-pr.ts {{taskId}}
 ```
 
 **If mergeable is "CONFLICTING" (has conflicts):**
