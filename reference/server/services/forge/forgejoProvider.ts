@@ -78,15 +78,19 @@ export const forgejoProvider: ForgeProvider = {
       `/repos/${ctx.owner}/${ctx.repo}/commits/${pr.head.sha}/status`,
     )) as {
       state: string;
-      statuses: Array<{ context: string; status: string; target_url: string }>;
+      // Forgejo/Gitea CommitStatus uses `state`; older/Gitea variants use `status` — read both. Confirm at E2E.
+      statuses: Array<{ state?: string; status?: string; context: string; target_url: string }>;
     };
 
-    const checks: CICheck[] = statusData.statuses.map((s) => ({
-      bucket: s.status === 'success' ? 'pass' : s.status === 'pending' ? 'pending' : 'fail',
-      name: s.context,
-      state: s.status,
-      link: s.target_url,
-    }));
+    const checks: CICheck[] = statusData.statuses.map((s) => {
+      const checkState = s.state ?? s.status ?? 'unknown';
+      return {
+        bucket: checkState === 'success' ? 'pass' : checkState === 'pending' ? 'pending' : 'fail',
+        name: s.context,
+        state: checkState,
+        link: s.target_url,
+      };
+    });
 
     const ciStatus: CIStatus = {
       status: mapCiState(statusData.state),
@@ -121,7 +125,7 @@ export const forgejoProvider: ForgeProvider = {
       'GET',
       `/repos/${ctx.owner}/${ctx.repo}/pulls/${args.prNumber}`,
     )) as { head: { ref: string } };
-    return pr.head.ref ?? null;
+    return pr.head.ref;
   },
 
   async getReviewComments(

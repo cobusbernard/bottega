@@ -29,7 +29,7 @@ describe('forgejoProvider', () => {
     expect(init.headers.Authorization).toBe('token pat');
   });
 
-  it('getPRStatus maps a failing commit status to failed', async () => {
+  it('getPRStatus maps a failing commit status to failed (status field)', async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockReturnValueOnce(json([{ number: 3, head: { ref: 'task/3-x', sha: 'abc' }, html_url: 'u', state: 'open', mergeable: true }]))
@@ -37,6 +37,20 @@ describe('forgejoProvider', () => {
     const s = await forgejoProvider.getPRStatus(ctx, { branch: 'task/3-x' });
     expect(s.exists).toBe(true);
     expect(s.ciStatus?.status).toBe('failed');
+    expect(s.ciStatus?.checks[0]?.state).toBe('failure');
+    expect(s.ciStatus?.checks[0]?.bucket).toBe('fail');
+  });
+
+  it('getPRStatus maps a failing commit status to failed (state field — defensive read)', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockReturnValueOnce(json([{ number: 3, head: { ref: 'task/3-x', sha: 'abc' }, html_url: 'u', state: 'open', mergeable: true }]))
+      .mockReturnValueOnce(json({ state: 'failure', statuses: [{ context: 'ci', state: 'failure', target_url: 'l' }] }));
+    const s = await forgejoProvider.getPRStatus(ctx, { branch: 'task/3-x' });
+    expect(s.exists).toBe(true);
+    expect(s.ciStatus?.status).toBe('failed');
+    expect(s.ciStatus?.checks[0]?.state).toBe('failure');
+    expect(s.ciStatus?.checks[0]?.bucket).toBe('fail');
   });
 
   it('getPRStatus returns exists:false when no PR matches the branch', async () => {
@@ -81,5 +95,25 @@ describe('forgejoProvider', () => {
     vi.mocked(fetch).mockReturnValueOnce(json({ head: { ref: 'feat/branch' } }));
     const branch = await forgejoProvider.getPRBranch(ctx, { prNumber: 4, repoFullName: 'o/r' });
     expect(branch).toBe('feat/branch');
+  });
+
+  it('getReviewComments calls the correct endpoint and maps line ?? original_position fallback', async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockReturnValueOnce(json([
+      { body: 'looks good', user: { login: 'alice' }, path: 'src/foo.ts', line: 10, original_position: 5, diff_hunk: '@@ -1,3 +1,4 @@' },
+      { body: 'needs work', user: { login: 'bob' }, path: 'src/bar.ts', line: null, original_position: 7, diff_hunk: '@@ -2,2 +2,3 @@' },
+    ]));
+    const comments = await forgejoProvider.getReviewComments(ctx, { prNumber: 5, reviewId: 42, repoFullName: 'o/r' });
+
+    const call = fetchMock.mock.calls[0]!;
+    expect(call[0] as string).toBe('https://git.example.com/api/v1/repos/o/r/pulls/5/reviews/42/comments');
+    expect((call[1] as RequestInit & { headers: Record<string, string> }).headers.Authorization).toBe('token pat');
+
+    expect(comments).toHaveLength(2);
+    // first entry has line set — uses line directly
+    expect(comments[0]).toMatchObject({ body: 'looks good', line: 10, path: 'src/foo.ts', diff_hunk: '@@ -1,3 +1,4 @@' });
+    expect(comments[0]?.user).toEqual({ login: 'alice' });
+    // second entry has line null — falls back to original_position
+    expect(comments[1]).toMatchObject({ body: 'needs work', line: 7, path: 'src/bar.ts', diff_hunk: '@@ -2,2 +2,3 @@' });
   });
 });
