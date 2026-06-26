@@ -49,6 +49,8 @@ vi.mock('./agentRunner.js', () => ({
 
 import {
   validateGitHubWebhookSignature,
+  validateForgejoWebhookSignature,
+  normalizeWebhookEvent,
   parseTaskIdFromBranch,
   hasTriggerMention,
   getConfiguredTrigger,
@@ -109,6 +111,132 @@ describe('Webhook Service', () => {
 
       const result = validateGitHubWebhookSignature(payload, expectedSignature, secret);
       expect(result).toBe(true);
+    });
+  });
+
+  describe('validateForgejoWebhookSignature', () => {
+    it('validates a Forgejo signature (hex, no prefix)', () => {
+      const body = JSON.stringify({ a: 1 });
+      const secret = 's';
+      const sig = crypto.createHmac('sha256', secret).update(body).digest('hex');
+      expect(validateForgejoWebhookSignature(body, sig, secret)).toBe(true);
+      expect(validateForgejoWebhookSignature(body, 'deadbeef', secret)).toBe(false);
+    });
+
+    it('returns false for a sha256= prefixed signature (GitHub-style)', () => {
+      const body = '{"test": "data"}';
+      const secret = 'test-secret';
+      const rawHex = crypto.createHmac('sha256', secret).update(body, 'utf8').digest('hex');
+      const githubStyle = 'sha256=' + rawHex;
+      // Forgejo expects raw hex; the sha256= prefix makes it a different string
+      expect(validateForgejoWebhookSignature(body, githubStyle, secret)).toBe(false);
+    });
+
+    it('returns false for missing signature', () => {
+      expect(validateForgejoWebhookSignature('body', undefined, 'secret')).toBe(false);
+    });
+
+    it('returns false for missing secret', () => {
+      expect(validateForgejoWebhookSignature('body', 'sig', undefined)).toBe(false);
+    });
+
+    it('handles Buffer payload', () => {
+      const body = Buffer.from('{"test": "data"}');
+      const secret = 'buf-secret';
+      const sig = crypto
+        .createHmac('sha256', secret)
+        .update(body.toString(), 'utf8')
+        .digest('hex');
+      expect(validateForgejoWebhookSignature(body, sig, secret)).toBe(true);
+    });
+  });
+
+  describe('normalizeWebhookEvent — Forgejo', () => {
+    it('normalizes a Forgejo issue_comment into a comment event', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'issue_comment' }, {
+        action: 'created',
+        issue: { number: 4, pull_request: {}, html_url: 'https://git/o/r/pulls/4' },
+        comment: { body: '@bottega fix it' },
+      });
+      expect(ev).toMatchObject({ kind: 'comment', prNumber: 4, bodyText: '@bottega fix it' });
+    });
+
+    it('returns null for Forgejo issue_comment on a plain issue (no pull_request)', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'issue_comment' }, {
+        action: 'created',
+        issue: { number: 7, html_url: 'https://git/o/r/issues/7' },
+        comment: { body: 'some comment' },
+      });
+      expect(ev).toBeNull();
+    });
+
+    it('returns null for Forgejo issue_comment with non-created action', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'issue_comment' }, {
+        action: 'edited',
+        issue: { number: 4, pull_request: {}, html_url: 'https://git/o/r/pulls/4' },
+        comment: { body: '@bottega fix it' },
+      });
+      expect(ev).toBeNull();
+    });
+
+    it('normalizes a Forgejo pull_request_review into a review event', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'pull_request_review' }, {
+        action: 'submitted',
+        review: { id: 99, body: '@bottega lgtm', user: { login: 'reviewer' } },
+        pull_request: {
+          number: 10,
+          head: { ref: 'task/10-my-feature' },
+          html_url: 'https://git/o/r/pulls/10',
+        },
+      });
+      expect(ev).toMatchObject({
+        kind: 'review',
+        prNumber: 10,
+        branch: 'task/10-my-feature',
+        bodyText: '@bottega lgtm',
+      });
+    });
+
+    it('normalizes a Forgejo review (x-gitea-event: review) into a review event', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'review' }, {
+        action: 'submitted',
+        review: { id: 100, body: '@bottega check this', user: { login: 'someone' } },
+        pull_request: { number: 5, head: { ref: 'task/5-fix' }, html_url: 'https://git/o/r/pulls/5' },
+      });
+      expect(ev).toMatchObject({ kind: 'review', prNumber: 5, branch: 'task/5-fix' });
+    });
+
+    it('returns null for unrecognized Forgejo event types', () => {
+      const ev = normalizeWebhookEvent('forgejo', { 'x-gitea-event': 'push' }, {
+        action: 'created',
+        ref: 'refs/heads/main',
+      });
+      expect(ev).toBeNull();
+    });
+  });
+
+  describe('normalizeWebhookEvent — GitHub', () => {
+    it('normalizes a GitHub issue_comment into a comment event', () => {
+      const ev = normalizeWebhookEvent('github', { 'x-github-event': 'issue_comment' }, {
+        action: 'created',
+        issue: { number: 42, pull_request: { url: 'https://api.github.com/pulls/42' }, html_url: 'https://github.com/o/r/pull/42' },
+        comment: { body: '@bottega fix this' },
+      });
+      expect(ev).toMatchObject({ kind: 'comment', prNumber: 42, bodyText: '@bottega fix this' });
+    });
+
+    it('normalizes a GitHub pull_request_review into a review event', () => {
+      const ev = normalizeWebhookEvent('github', { 'x-github-event': 'pull_request_review' }, {
+        action: 'submitted',
+        review: { id: 55, body: 'looks good', user: { login: 'rev' } },
+        pull_request: { number: 7, head: { ref: 'task/7-feat' }, html_url: 'https://github.com/o/r/pull/7' },
+      });
+      expect(ev).toMatchObject({ kind: 'review', prNumber: 7, branch: 'task/7-feat' });
+    });
+
+    it('returns null for a GitHub push event', () => {
+      const ev = normalizeWebhookEvent('github', { 'x-github-event': 'push' }, { ref: 'refs/heads/main' });
+      expect(ev).toBeNull();
     });
   });
 

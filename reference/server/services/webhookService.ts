@@ -1,14 +1,15 @@
 /**
  * Webhook Service
  *
- * Handles GitHub webhook signature validation, task identification,
- * and PR agent triggering for @-mentions in PR comments. The trigger
- * string itself is read from app_settings (configurable per instance).
+ * Handles GitHub and Forgejo webhook signature validation, event normalization,
+ * task identification, and PR agent triggering for @-mentions in PR comments.
+ * The trigger string itself is read from app_settings (configurable per instance).
  */
 
 import crypto from 'crypto';
 import { tasksDb, userDb, agentRunsDb, appSettingsDb } from '../database/db.js';
 import { worktreeExists } from './worktree.js';
+import type { ReviewCommentProvider } from './forge/types.js';
 import type {
   BroadcastFn,
   BroadcastToConversationSubscribersFn,
@@ -36,6 +37,141 @@ export function validateGitHubWebhookSignature(
   } catch {
     return false;
   }
+}
+
+/**
+ * Validate Forgejo/Gitea webhook signature using HMAC-SHA256 (hex, no prefix).
+ * Forgejo sends the raw hex digest in X-Forgejo-Signature / X-Gitea-Signature —
+ * there is no "sha256=" prefix (unlike GitHub). Comparison is constant-time.
+ */
+export function validateForgejoWebhookSignature(
+  payload: Buffer | string,
+  signature: string | undefined,
+  secret: string | undefined,
+): boolean {
+  if (!signature || !secret) {
+    return false;
+  }
+
+  const payloadString = typeof payload === 'string' ? payload : payload.toString();
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payloadString, 'utf8')
+    .digest('hex');
+
+  try {
+    if (signature.length !== expectedSignature.length) {
+      // timingSafeEqual requires equal-length buffers; guard to avoid throwing.
+      return false;
+    }
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normalized webhook event — common shape for both GitHub and Forgejo deliveries.
+ * Feeds directly into triggerPrAgentFromComment / triggerPrAgentFromReview.
+ */
+export interface NormalizedWebhookEvent {
+  kind: 'comment' | 'review';
+  prUrl?: string;
+  prNumber?: number;
+  branch?: string;
+  bodyText?: string;
+  comments?: ReviewCommentProvider[];
+}
+
+/**
+ * Normalize an inbound webhook payload into NormalizedWebhookEvent.
+ *
+ * GitHub branch: reads issue_comment and pull_request_review shapes.
+ * Forgejo branch: maps Forgejo/Gitea issue_comment (issue.pull_request present)
+ * and pull_request_review/review events to the same shape.
+ *
+ * Returns null for irrelevant events (wrong event type, wrong action, non-PR comment).
+ */
+export function normalizeWebhookEvent(
+  type: 'github' | 'forgejo',
+  headers: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): NormalizedWebhookEvent | null {
+  if (type === 'github') {
+    const eventType = headers['x-github-event'] as string | undefined;
+
+    if (eventType === 'issue_comment') {
+      if (payload.action !== 'created') return null;
+      const issue = payload.issue as
+        | { number?: number; pull_request?: unknown; html_url?: string }
+        | undefined;
+      if (!issue?.pull_request) return null;
+      const comment = payload.comment as { body?: string } | undefined;
+      const ev: NormalizedWebhookEvent = { kind: 'comment' };
+      if (issue.number !== undefined) ev.prNumber = issue.number;
+      if (issue.html_url !== undefined) ev.prUrl = issue.html_url;
+      if (comment?.body !== undefined) ev.bodyText = comment.body;
+      return ev;
+    }
+
+    if (eventType === 'pull_request_review') {
+      if (payload.action !== 'submitted') return null;
+      const review = payload.review as
+        | { body?: string; user?: { login?: string }; id?: number }
+        | undefined;
+      const pr = payload.pull_request as
+        | { number?: number; head?: { ref?: string }; html_url?: string }
+        | undefined;
+      const ev: NormalizedWebhookEvent = { kind: 'review' };
+      if (pr?.number !== undefined) ev.prNumber = pr.number;
+      if (pr?.html_url !== undefined) ev.prUrl = pr.html_url;
+      if (pr?.head?.ref !== undefined) ev.branch = pr.head.ref;
+      if (review?.body !== undefined) ev.bodyText = review.body;
+      return ev;
+    }
+
+    return null;
+  }
+
+  // Forgejo/Gitea — event type lives in x-gitea-event (Forgejo preserves the Gitea header name).
+  const eventType = (headers['x-gitea-event'] ?? headers['x-forgejo-event']) as
+    | string
+    | undefined;
+
+  if (eventType === 'issue_comment') {
+    if (payload.action !== 'created') return null;
+    const issue = payload.issue as
+      | { number?: number; pull_request?: unknown; html_url?: string }
+      | undefined;
+    // Only trigger on PR comments — plain issues have no pull_request field.
+    if (!issue?.pull_request) return null;
+    const comment = payload.comment as { body?: string } | undefined;
+    const ev: NormalizedWebhookEvent = { kind: 'comment' };
+    if (issue.number !== undefined) ev.prNumber = issue.number;
+    if (issue.html_url !== undefined) ev.prUrl = issue.html_url;
+    if (comment?.body !== undefined) ev.bodyText = comment.body;
+    // branch is NOT present in Forgejo issue_comment payloads; the caller must
+    // fetch it via the Forgejo API using prNumber (pending forge-provider support).
+    return ev;
+  }
+
+  if (eventType === 'pull_request_review' || eventType === 'review') {
+    if (payload.action !== 'submitted') return null;
+    const review = payload.review as
+      | { body?: string; user?: { login?: string }; id?: number }
+      | undefined;
+    const pr = payload.pull_request as
+      | { number?: number; head?: { ref?: string }; html_url?: string }
+      | undefined;
+    const ev: NormalizedWebhookEvent = { kind: 'review' };
+    if (pr?.number !== undefined) ev.prNumber = pr.number;
+    if (pr?.html_url !== undefined) ev.prUrl = pr.html_url;
+    if (pr?.head?.ref !== undefined) ev.branch = pr.head.ref;
+    if (review?.body !== undefined) ev.bodyText = review.body;
+    return ev;
+  }
+
+  return null;
 }
 
 /**
