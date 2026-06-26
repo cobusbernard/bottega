@@ -114,8 +114,8 @@ export async function startAgentRun(
       const forgeCli = forgeCliRaw === 'forge'
         ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
         : 'gh';
-      const forgeArgs = forgeCliRaw === 'forge'
-        ? `--user ${effectiveUserId ?? 0} --task ${taskId}`
+      const forgeArgs = forgeCliRaw === 'forge' && effectiveUserId != null
+        ? ` --user ${effectiveUserId} --task ${taskId}`
         : '';
 
       // Use review-specific prompt if triggered by webhook with review comments
@@ -143,8 +143,8 @@ export async function startAgentRun(
       const yoloForgeCli = yoloForgeCliRaw === 'forge'
         ? 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts'
         : 'gh';
-      const yoloForgeArgs = yoloForgeCliRaw === 'forge'
-        ? `--user ${effectiveUserId ?? 0} --task ${taskId}`
+      const yoloForgeArgs = yoloForgeCliRaw === 'forge' && effectiveUserId != null
+        ? ` --user ${effectiveUserId} --task ${taskId}`
         : '';
       message = await generateYoloMessage(taskDocPath, taskId, yoloPrUrl, yoloForgeCli, yoloForgeArgs);
       break;

@@ -597,6 +597,74 @@ describe('Webhooks Routes', () => {
       expect(response.status).toBe(500);
       expect(response.body.error).toBe('Failed to trigger agent');
     });
+
+    it('Forgejo review success path: fetches review comments via bot token and forwards them', async () => {
+      vi.mocked(mockHasTriggerMention).mockReturnValue(true);
+
+      // Set up a matching Forgejo connection with a bot token
+      vi.mocked(mockListEnabled).mockReturnValue([
+        {
+          id: 10,
+          type: 'forgejo' as const,
+          name: 'Corp Forge',
+          base_url: 'https://forgejo.example.com',
+          enabled: 1 as const,
+          created_at: '2026-01-01T00:00:00Z',
+        },
+      ]);
+      vi.mocked(mockGetConnectionToken).mockReturnValue('bot-secret');
+      vi.mocked(mockGetReviewComments).mockResolvedValue([
+        {
+          body: 'rename this',
+          user: { login: 'reviewer' },
+          path: 'src/app.ts',
+          line: 10,
+          start_line: null,
+          diff_hunk: null,
+          side: 'RIGHT',
+        },
+      ]);
+
+      const response = await makeForgejoRequest({
+        action: 'submitted',
+        review: { id: 77, body: '@bottega please review', user: { login: 'reviewer' } },
+        pull_request: {
+          number: 42,
+          head: { ref: 'task/123-forgejo-feature' },
+          html_url: 'https://forgejo.example.com/org/repo/pulls/42',
+        },
+        repository: {
+          html_url: 'https://forgejo.example.com/org/repo',
+          full_name: 'org/repo',
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(response.body.status).toBe('triggered');
+      expect(response.body.taskId).toBe(123);
+
+      // getReviewComments was called with the Forgejo context and correct IDs
+      expect(mockGetReviewComments).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'forgejo',
+          baseUrl: 'https://forgejo.example.com',
+          owner: 'org',
+          repo: 'repo',
+        }),
+        expect.objectContaining({ prNumber: 42, reviewId: 77 }),
+      );
+
+      // Inline comment is forwarded to triggerPrAgentFromReview
+      expect(mockTriggerPrAgentFromReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          taskId: 123,
+          reviewBody: '@bottega please review',
+          comments: expect.arrayContaining([
+            expect.objectContaining({ commentBody: 'rename this' }),
+          ]),
+        }),
+      );
+    });
   });
 
   describe('POST /api/webhooks/github - pull_request_review', () => {

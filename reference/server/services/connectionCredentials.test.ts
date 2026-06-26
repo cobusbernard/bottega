@@ -43,6 +43,14 @@ describe('connectionCredentials', () => {
     expect(getConnectionToken(5)).toBe('bot_trimmed');
   });
 
+  it('returns null for a whitespace-only token file (so botTokenConfigured stays consistent)', () => {
+    // Write a whitespace-only file directly — setConnectionToken would reject it.
+    const tokenPath = path.join(tempRoot, 'connections', '5', 'token');
+    fs.mkdirSync(path.dirname(tokenPath), { recursive: true });
+    fs.writeFileSync(tokenPath, '   \n   ');
+    expect(getConnectionToken(5)).toBeNull();
+  });
+
   it('deleteConnectionToken is idempotent when file is absent', () => {
     expect(() => deleteConnectionToken(99)).not.toThrow();
   });

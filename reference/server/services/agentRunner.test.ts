@@ -110,6 +110,8 @@ import {
   generateRefinementMessage,
   generatePrAgentMessage,
   generateYoloMessage,
+  generatePrAgentCommentMessage,
+  generatePrAgentReviewMessage,
 } from '../constants/agentPrompts.js';
 import { getWorktreeProjectPath, worktreeExists } from './worktree.js';
 import { resolveForgeCli } from './forge/index.js';
@@ -469,12 +471,13 @@ describe('agentRunner', () => {
 
       await startAgentRun(1, 'pr', { userId: 5 });
 
+      // forgeArgs carries a leading space so templates render without trailing space for GitHub
       expect(generatePrAgentMessage).toHaveBeenCalledWith(
         expect.any(String),
         1,
         null,
         'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
-        '--user 5 --task 1',
+        ' --user 5 --task 1',
       );
     });
 
@@ -502,7 +505,43 @@ describe('agentRunner', () => {
         1,
         null,
         'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
-        '--user 5 --task 1',
+        ' --user 5 --task 1',
+      );
+    });
+
+    it('passes tsx forge.ts and --user/--task to generatePrAgentCommentMessage for Forgejo', async () => {
+      vi.mocked(resolveForgeCli).mockReturnValue('forge');
+
+      await startAgentRun(1, 'pr', {
+        userId: 5,
+        webhookContext: { commentBody: 'fix it', commentAuthor: 'alice' },
+      });
+
+      expect(generatePrAgentCommentMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        null,
+        expect.objectContaining({ commentBody: 'fix it' }),
+        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        ' --user 5 --task 1',
+      );
+    });
+
+    it('passes tsx forge.ts and --user/--task to generatePrAgentReviewMessage for Forgejo', async () => {
+      vi.mocked(resolveForgeCli).mockReturnValue('forge');
+
+      await startAgentRun(1, 'pr', {
+        userId: 5,
+        webhookContext: { reviewBody: 'lgtm', reviewAuthor: 'carol', comments: [] },
+      });
+
+      expect(generatePrAgentReviewMessage).toHaveBeenCalledWith(
+        expect.any(String),
+        1,
+        null,
+        expect.objectContaining({ reviewBody: 'lgtm' }),
+        'tsx /home/ubuntu/bottega/reference/scripts/forge.ts',
+        ' --user 5 --task 1',
       );
     });
   });

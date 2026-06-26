@@ -76,10 +76,13 @@ export async function resolveForgeProvider(
   const connectionId = project.forge_connection_id ?? null;
   let connection = connectionId != null ? forgeConnectionsDb.getById(connectionId) : undefined;
 
-  // Fall back to the first enabled connection when the project has none pinned.
+  // Fall back to the first enabled GitHub connection when the project has none pinned.
+  // We intentionally skip Forgejo connections here: without a project-level pin we
+  // cannot know which Forgejo instance owns this repo, and `resolveForgeCli` likewise
+  // returns 'gh' for unpinned projects — stay consistent.
   if (!connection) {
     const enabled = forgeConnectionsDb.listEnabled();
-    connection = enabled[0];
+    connection = enabled.find((c) => c.type === 'github');
   }
 
   // GitHub path (explicit connection, or no connection at all → synthetic default).

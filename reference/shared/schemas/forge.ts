@@ -5,7 +5,7 @@ import { z } from 'zod';
 export const CreateForgeConnectionSchema = z.object({
   type: z.enum(['github', 'forgejo']),
   name: z.string().min(1),
-  base_url: z.string().min(1),
+  base_url: z.string().url(),
 });
 export type CreateForgeConnection = z.infer<typeof CreateForgeConnectionSchema>;
 

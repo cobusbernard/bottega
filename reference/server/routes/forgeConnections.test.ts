@@ -153,6 +153,16 @@ describe('Forge Connections Routes', () => {
         expect(res.status).toBe(400);
         expect(res.body.error).toBe('Validation failed');
       });
+
+      it('returns 400 for a non-URL base_url', async () => {
+        const res = await request(app)
+          .post('/api/admin/forge-connections')
+          .send({ type: 'forgejo', name: 'Corp Forge', base_url: 'not-a-url' });
+
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Validation failed');
+        expect(Array.isArray(res.body.issues)).toBe(true);
+      });
     });
 
     describe('PATCH /api/admin/forge-connections/:id', () => {

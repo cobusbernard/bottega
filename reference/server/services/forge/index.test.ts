@@ -26,6 +26,25 @@ describe('resolveForgeProvider', () => {
     expect(r.ctx.type).toBe('github');
   });
 
+  it('still resolves to GitHub when no project connection but an enabled Forgejo connection exists', async () => {
+    // Forgejo connection is enabled but project has no forge_connection_id — the
+    // fallback must only select GitHub connections, not the first enabled of any type.
+    vi.mocked(forgeConnectionsDb.listEnabled).mockReturnValueOnce([
+      {
+        id: 99,
+        type: 'forgejo',
+        name: 'Corp Forge',
+        base_url: 'https://git.example.com',
+        enabled: 1,
+        created_at: '',
+      },
+    ]);
+    // project has no forge_connection_id (default mock)
+    const r = await resolveForgeProvider(1, 100);
+    expect(r.cli).toBe('gh');
+    expect(r.ctx.type).toBe('github');
+  });
+
   it('returns forgejo provider when connection type is forgejo', async () => {
     vi.mocked(forgeConnectionsDb.getById).mockReturnValueOnce({
       id: 42,

@@ -44,7 +44,7 @@ git add -A && git commit -m "Address PR feedback: <brief description>" && git pu
 ### 6. Monitor CI
 Poll CI status (max 20 attempts, 30s intervals):
 ```bash
-{{forgeCli}} pr checks {{forgeArgs}}
+{{forgeCli}} pr checks{{forgeArgs}}
 ```
 
 **If CI has no checks configured (status 'none'):**
@@ -58,7 +58,7 @@ Proceed to step 7 (conflict check) before completing.
 Proceed to step 7 (conflict check) before completing.
 
 **If FAILED:**
-1. Get failure details: `{{forgeCli}} pr checks {{forgeArgs}}` and {{ciLogHint}}
+1. Get failure details: `{{forgeCli}} pr checks{{forgeArgs}}` and {{ciLogHint}}
 2. Analyze and fix the failures
 3. Commit and push: `git add -A && git commit -m "Fix CI: <description>" && git push`
 4. Return to monitoring (max 10 fix iterations)
@@ -66,7 +66,7 @@ Proceed to step 7 (conflict check) before completing.
 ### 7. Check for Merge Conflicts
 Once CI passes (or has no checks), check if the PR has merge conflicts:
 ```bash
-{{forgeCli}} pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }' {{forgeArgs}}
+{{forgeCli}} pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }'{{forgeArgs}}
 ```
 
 **If mergeable is "MERGEABLE" (no conflicts):**

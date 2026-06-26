@@ -12,7 +12,7 @@
 ### 2. Monitor CI Status
 Check the CI status:
 ```bash
-{{forgeCli}} pr checks {{forgeArgs}}
+{{forgeCli}} pr checks{{forgeArgs}}
 ```
 
 ### 3. Handle CI Results
@@ -26,7 +26,7 @@ Check the CI status:
 Proceed to step 4 (conflict check) before completing.
 
 **If FAILED:**
-1. Get failure details: `{{forgeCli}} pr checks {{forgeArgs}}` and {{ciLogHint}}
+1. Get failure details: `{{forgeCli}} pr checks{{forgeArgs}}` and {{ciLogHint}}
 2. Analyze what's causing the failures (test failures, build errors, lint issues)
 3. Fix the issues in the codebase
 4. Commit and push: `git add -A && git commit -m "Fix CI: <description>" && git push`
@@ -39,7 +39,7 @@ Proceed to step 4 (conflict check) before completing.
 ### 4. Check for Merge Conflicts
 Once CI passes, check if the PR has merge conflicts with the base branch:
 ```bash
-{{forgeCli}} pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }' {{forgeArgs}}
+{{forgeCli}} pr view --json mergeStateStatus,mergeable --jq '{ mergeStateStatus, mergeable }'{{forgeArgs}}
 ```
 
 **If mergeable is "MERGEABLE" (no conflicts):**

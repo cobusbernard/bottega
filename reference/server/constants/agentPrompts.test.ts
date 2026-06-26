@@ -254,7 +254,8 @@ describe('forge-aware CLI rendering', () => {
   const taskId = 1;
   // The tsx invocation path rendered by agentRunner for Forgejo projects
   const forgeTsx = 'tsx /home/ubuntu/bottega/reference/scripts/forge.ts';
-  const forgeArgs = '--user 5 --task 1';
+  // Leading space — forgeArgs carries the separator so GitHub renders no trailing space
+  const forgeArgs = ' --user 5 --task 1';
 
   it('renders gh pr create for GitHub (default) — no forge.ts, no --user', async () => {
     const msg = await generatePrAgentMessage(taskDocPath, taskId, null, 'gh');

@@ -51,7 +51,7 @@ function buildPrCreateOrVerifyBlock(
 A PR already exists at ${prUrl}. Skip to step 2.`;
   }
   const createCmd = `${forgeCli} pr create --title "<short task title>" --body "Summary: <what the task does and how this implementation solves it. Keep this to a short paragraph. Task: #${taskId}>"`;
-  const createLine = forgeArgs ? `${createCmd} ${forgeArgs}` : createCmd;
+  const createLine = `${createCmd}${forgeArgs}`;
   return `### 1. Create PR
 Create a PR for this task:
 1. Check for uncommitted changes: \`git status\`

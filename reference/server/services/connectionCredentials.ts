@@ -26,7 +26,10 @@ export function setConnectionToken(connectionId: number, token: string): void {
 export function getConnectionToken(connectionId: number): string | null {
   const tokenPath = resolveConnectionTokenPath(connectionId);
   try {
-    return fs.readFileSync(tokenPath, 'utf8').trim();
+    const content = fs.readFileSync(tokenPath, 'utf8').trim();
+    // Treat a whitespace-only file the same as a missing file so
+    // `botTokenConfigured` checks are consistent with `if (token)` guards.
+    return content || null;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
     throw err;
