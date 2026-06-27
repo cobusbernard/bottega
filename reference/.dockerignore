@@ -1,0 +1,29 @@
+# Excluding node_modules is load-bearing, not just hygiene: the image runs
+# `pnpm install` to compile native addons for the CONTAINER's arch/libc, then
+# `COPY . .`. If the host's node_modules came along it would clobber those
+# freshly-compiled binaries and the image would crash at runtime.
+node_modules
+dist
+coverage
+
+# VCS / CI metadata
+.git
+.gitignore
+.githooks
+
+# Local state that must never bake into an image
+*.db
+*.db-shm
+*.db-wal
+server/database/*.db
+server/database/*.db-shm
+server/database/*.db-wal
+.env
+.env.*
+!.env.example
+CLAUDE.local.md
+
+# Editor / OS noise
+.DS_Store
+*.log
+npm-debug.log*
