@@ -51,10 +51,12 @@ jobs:
         id: env
         run: |
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "Deploying PROD (tag push) — bottega.cobus.dev, namespace prod, volume bottega"
             echo "namespace=prod"                  >> "$GITHUB_OUTPUT"
             echo "instance=bottega"                >> "$GITHUB_OUTPUT"
             echo "app_host=bottega.cobus.dev"      >> "$GITHUB_OUTPUT"
           else
+            echo "Deploying DEV (main push) — bottega-dev.cobus.dev, namespace dev, volume bottega-dev"
             echo "namespace=dev"                   >> "$GITHUB_OUTPUT"
             echo "instance=bottega-dev"            >> "$GITHUB_OUTPUT"
             echo "app_host=bottega-dev.cobus.dev"  >> "$GITHUB_OUTPUT"
@@ -108,7 +110,14 @@ jobs:
           INSTANCE: ${{ steps.env.outputs.instance }}
           APP_HOST: ${{ steps.env.outputs.app_host }}
         run: |
+          # Pass the namespace EXPLICITLY via -namespace (highest precedence)
+          # rather than relying solely on the NOMAD_NAMESPACE env var. Both work,
+          # but the flag is auditable in the logs and, critically, makes an empty
+          # value fail loudly here instead of silently defaulting to `default`.
+          : "${NOMAD_NAMESPACE:?Resolve environment produced an empty namespace}"
+          echo "Deploying instance '${INSTANCE}' to namespace '${NOMAD_NAMESPACE}' (host '${APP_HOST}')"
           nomad job run \
+            -namespace "${NOMAD_NAMESPACE}" \
             -var "image_tag=${IMAGE_TAG}" \
             -var "instance=${INSTANCE}" \
             -var "app_host=${APP_HOST}" \
