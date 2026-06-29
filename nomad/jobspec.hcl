@@ -35,7 +35,34 @@ job "bottega" {
   type        = "service"
 
   group "web" {
+    # SQLite is single-writer and /data is ONE shared directory (the same host
+    # dir is bind-mounted onto every client node), so the DB tolerates exactly
+    # one writer. count = 1 guarantees one allocation — hence one writer — per
+    # instance. Do NOT raise this: a second alloc would open the same
+    # /data/bottega.db concurrently and contend/corrupt, and a higher count
+    # buys no availability because all allocs would share the one DB file anyway.
     count = 1
+
+    # Stateful single-writer deploy strategy: DISABLE rolling deployments.
+    #
+    # The default (max_parallel >= 1) is destructive-but-overlapping: it starts
+    # the NEW alloc and waits for it to pass health checks (min_healthy_time,
+    # >= 10s) BEFORE stopping the OLD one. For that whole window two processes
+    # hold the same SQLite file open — and worse, the new alloc runs its
+    # boot-time schema migrations (PRAGMA table_info + ALTERs in db.ts) while the
+    # old one is still writing. That is the exact concurrency we must avoid.
+    #
+    # max_parallel = 0 uses forced updates instead of a deployment: the old
+    # alloc is stopped as the new one is placed (no health-gated wait), so
+    # concurrency shrinks to the brief shutdown-drain handoff bounded by the
+    # task kill_timeout below, which the app's WAL + busy_timeout (5s) absorbs.
+    #
+    # Tradeoff accepted: ~seconds of downtime per deploy and no automatic
+    # health-gated rollback. For a single-instance stateful homelab service that
+    # is the right call — data integrity over zero-downtime.
+    update {
+      max_parallel = 0
+    }
 
     network {
       port "http" {
@@ -76,6 +103,13 @@ job "bottega" {
 
     task "web" {
       driver = "docker"
+
+      # Bound the outgoing alloc's shutdown during the destructive handoff (see
+      # the group `update` block). The app closes its SQLite connection on
+      # process exit, so a prompt drain releases the DB lock quickly; 10s caps
+      # in-flight request draining while staying well within the new alloc's
+      # busy_timeout retry budget, so the incoming writer waits out the old one.
+      kill_timeout = "10s"
 
       # Authenticate to Vault for the secret template below. The role grants read
       # on this instance's secret path only (least privilege per environment).

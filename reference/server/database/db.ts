@@ -72,6 +72,22 @@ if (!process.env.DATABASE_PATH) {
 
 const db = new Database(DB_PATH);
 
+// Concurrency hardening for the deployed shape (see nomad/jobspec.hcl): the DB
+// lives on a shared host volume and a destructive redeploy can briefly overlap
+// the outgoing and incoming processes on the same file.
+//   - journal_mode = WAL: readers don't block the single writer, and WAL is the
+//     correct journal for one local writer. Persisted in the file; re-asserting
+//     it each boot is idempotent. (No-op for :memory: test DBs.)
+//   - busy_timeout = 5000: a transient SQLITE_BUSY during the deploy handoff is
+//     retried for up to 5s instead of throwing — long enough to outlast the old
+//     process releasing its lock under the task's 10s kill_timeout.
+//   - synchronous = NORMAL: the standard, crash-safe companion to WAL (worst
+//     case is losing the last transaction on power loss, never corruption).
+// All three are effectively free locally, where there is never contention.
+db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
+
 db.pragma('foreign_keys = ON');
 
 const appInstallPath = path.join(__dirname, '../..');
