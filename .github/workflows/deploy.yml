@@ -6,8 +6,12 @@ name: Deploy
 #   - semver tag (v1.2.3)  -> PROD: bottega.cobus.dev, namespace prod, volume bottega
 #   - push to main         -> DEV:  bottega-dev.cobus.dev, namespace dev,  volume bottega-dev
 #
-# Fork / PR safety: no pull_request trigger, and the job pins to this exact repo,
-# so neither a PR nor a fork can ever build or deploy.
+# Tests are NOT re-run here and the image no longer self-tests: the `test` job
+# reuses .github/workflows/unit-tests.yml and `deploy` needs it, so a red suite
+# blocks the build/push/deploy entirely.
+#
+# Fork / PR safety: no pull_request trigger, and both jobs pin to this exact
+# repo, so neither a PR nor a fork can ever build or deploy.
 on:
   push:
     branches: [main]
@@ -26,13 +30,20 @@ env:
   IMAGE: ghcr.io/cobusbernard/bottega
 
 jobs:
+  # Quality gate. Reuses the standalone unit-test workflow; `deploy` needs it,
+  # so nothing is built, pushed, or deployed unless the unit suite is green.
+  test:
+    if: github.repository == 'cobusbernard/bottega'
+    uses: ./.github/workflows/unit-tests.yml
+
   deploy:
+    needs: test
     if: github.repository == 'cobusbernard/bottega'
     runs-on: [self-hosted, homelab]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4.3.1
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # actions/checkout@v7.0.0
 
       # Map the triggering ref -> environment. GITHUB_REF is a trusted,
       # GitHub-controlled value (not user input), so it's safe in run:.
@@ -49,46 +60,45 @@ jobs:
             echo "app_host=bottega-dev.cobus.dev"  >> "$GITHUB_OUTPUT"
           fi
 
-      # No setup-buildx-action: the self-hosted runner already has docker buildx.
-      # Builds use the default docker driver; its daemon-side layer cache is
-      # reused across runs, so no explicit cache-from/to is needed.
-
+      # Raw docker instead of the docker/* actions: the self-hosted runner
+      # already has docker and reuses its daemon-side layer cache across runs, so
+      # the actions' buildx GHA cache buys nothing here. Trade-off vs the actions
+      # is no auto-generated OCI labels — we re-add image.source by hand so the
+      # GHCR package stays linked to this repo.
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
 
-      # The jobspec pins the image by git SHA (immutable). On a semver tag we also
-      # publish :<version> and :latest for humans. The unit suite runs INSIDE the
-      # Docker build (reference/Dockerfile), so a red test fails the build here and
-      # nothing is pushed or deployed.
-      - name: Image tags & labels
-        id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051  # v5.10.0
-        with:
-          images: ${{ env.IMAGE }}
-          tags: |
-            type=raw,value=${{ github.sha }}
-            type=ref,event=tag
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
-
-      - name: Build, test & push image
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6.19.2
-        with:
-          context: reference
-          file: reference/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+      # Always tag the immutable git SHA (the tag the Nomad jobspec pins). On a
+      # semver tag push, also publish :<version> and :latest for humans.
+      - name: Build & push image
+        env:
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          docker build \
+            --label "org.opencontainers.image.source=https://github.com/${REPO}" \
+            --label "org.opencontainers.image.revision=${SHA}" \
+            -t "${IMAGE}:${SHA}" \
+            -f reference/Dockerfile reference
+          docker push "${IMAGE}:${SHA}"
+          if [[ "${REF}" == refs/tags/v* ]]; then
+            VERSION="${REF#refs/tags/}"
+            docker tag "${IMAGE}:${SHA}" "${IMAGE}:${VERSION}"
+            docker tag "${IMAGE}:${SHA}" "${IMAGE}:latest"
+            docker push "${IMAGE}:${VERSION}"
+            docker push "${IMAGE}:latest"
+          fi
 
       # Deploy the just-built image (pinned by SHA) to the resolved environment.
       # Values flow through env: so no untrusted data is interpolated into the
       # command line. Ensure the secrets have been added in Vault via:
         # vault kv put secret/bottega/app jwt_secret=<openssl rand -hex 64> github_webhook_secret=<secret
         # vault kv put secret/bottega-dev/app jwt_secret=<openssl rand -hex 64> github_webhook_secret=<secret
-
       - name: Deploy to Nomad
         env:
           NOMAD_ADDR: ${{ vars.NOMAD_ADDR }}       # repo/org variable
